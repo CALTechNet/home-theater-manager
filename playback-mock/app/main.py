@@ -18,6 +18,21 @@ app = FastAPI(title="Playback Mock", version="0.1.0")
 class LoadRequest(BaseModel):
     showing_id: int
     items: list[dict] = []
+    outputs: dict | None = None
+
+
+# Simulated hardware outputs. The real Phase 3 service will enumerate these from
+# the DeckLink SDK and the GPU (DRM/NVML).
+VIDEO_OUTPUTS = [
+    {"id": "decklink:0", "name": "Blackmagic DeckLink SDI", "type": "sdi"},
+    {"id": "gpu:hdmi-0", "name": "GPU HDMI-0", "type": "hdmi"},
+    {"id": "gpu:dp-0", "name": "GPU DisplayPort-0", "type": "displayport"},
+]
+AUDIO_OUTPUTS = [
+    {"id": "sdi-embedded", "name": "SDI embedded audio (DeckLink)", "type": "sdi"},
+    {"id": "hdmi-0", "name": "GPU HDMI-0 audio", "type": "hdmi"},
+    {"id": "spdif-0", "name": "S/PDIF optical", "type": "spdif"},
+]
 
 
 class _State:
@@ -31,6 +46,7 @@ class _State:
         self.state = "IDLE"          # IDLE|LOADED|PLAYING|PAUSED
         self.showing_id: int | None = None
         self.items: list[dict] = []
+        self.outputs: dict | None = None
         self.index = 0
         self.position = 0.0          # seconds into current item
         self._last_tick = time.monotonic()
@@ -53,6 +69,7 @@ class _State:
                 "showing_id": self.showing_id,
                 "position_seconds": round(self.position, 1),
                 "current_item": current,
+                "outputs": self.outputs,
             }
 
 
@@ -65,6 +82,7 @@ def load(req: LoadRequest):
         _st.reset()
         _st.showing_id = req.showing_id
         _st.items = req.items
+        _st.outputs = req.outputs
         _st.state = "LOADED"
     return _st.snapshot()
 
@@ -109,6 +127,11 @@ def stop():
 @app.get("/playback/state")
 def state():
     return _st.snapshot()
+
+
+@app.get("/outputs")
+def outputs():
+    return {"video": VIDEO_OUTPUTS, "audio": AUDIO_OUTPUTS}
 
 
 @app.get("/health")

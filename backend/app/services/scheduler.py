@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal
 from ..models import Showing
 from . import playback_client
+from .settings_store import output_payload
 from .showings import build_playlist_payload
 
 log = logging.getLogger("htm.scheduler")
@@ -30,7 +31,7 @@ def _fire_showing(showing_id: int) -> None:
         if not showing or showing.status in ("canceled", "done"):
             return
         items = build_playlist_payload(showing)
-        playback_client.load(showing.id, items)
+        playback_client.load(showing.id, items, output_payload(db))
         playback_client.start()
         showing.status = "playing"
         db.commit()

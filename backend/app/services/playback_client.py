@@ -38,8 +38,16 @@ def _get(path: str) -> dict:
         raise PlaybackUnavailable(str(e)) from e
 
 
-def load(showing_id: int, items: list[dict]) -> dict:
-    return _post("/playback/load", {"showing_id": showing_id, "items": items})
+def load(showing_id: int, items: list[dict], outputs: dict | None = None) -> dict:
+    payload = {"showing_id": showing_id, "items": items}
+    if outputs:
+        payload["outputs"] = outputs
+    return _post("/playback/load", payload)
+
+
+def outputs() -> dict:
+    """Available video/audio output devices reported by the playback service."""
+    return _get("/outputs")
 
 
 def start() -> dict:

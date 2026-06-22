@@ -60,18 +60,23 @@ Then browse to `https://<server-ip>/`.
 
 ## Using it
 
-The UI has four tabs:
+The UI has five tabs:
 
 1. **Schedule** — week view of all showings. Top-right **New Showing** opens the
-   wizard (showtime → feature → trailers → review runtime → create). Click any
-   showing to edit, delete, or jump to ticket printing.
+   wizard (showtime → feature → trailers → review runtime → create). The feature
+   step shows full movie info (aspect ratio, resolution, audio profile, runtime,
+   size, bitrate). Click any showing to edit, delete, or jump to ticket printing.
 2. **Media** — click **Scan library** to index files under your media mount.
-   `ffprobe` reads duration, resolution, codec, and HDR. Tag each file as a
-   **feature** or **trailer**.
+   `ffprobe` reads duration, resolution, **aspect ratio**, codec, HDR, **audio
+   format** (Atmos / DTS:X / PCM / 5.1 / 7.1 …), **file size**, and **bitrate**.
+   Tag each file as a **feature** or **trailer**.
 3. **Now Showing** — live playback state with **Play / Pause / End Show** shuttle
    controls, plus a "run a show immediately" selector.
 4. **Ticketing** — pick a showing, choose a seat (e.g. `3C`), enter a name, tick
    **drink / popcorn / candy**, and print. Unlimited reprints with copy numbers.
+5. **Settings** — assign playback **video output(s)** (Blackmagic SDI, GPU
+   HDMI/DisplayPort, or several at once to mirror) and the **audio output** +
+   mode (passthrough for Atmos/DTS:X bitstreaming, or decode to PCM).
 
 **First run:** open **Media → Scan library**, tag a feature and some trailers,
 then create a showing from the **Schedule** tab.

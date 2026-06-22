@@ -47,6 +47,11 @@ export const api = {
   printTicket: (body) => req("POST", "/tickets", body),
   reprint: (id) => req("POST", `/tickets/${id}/reprint`),
 
+  // settings
+  getSettings: () => req("GET", "/settings"),
+  updateSettings: (body) => req("PUT", "/settings", body),
+  listOutputs: () => req("GET", "/settings/outputs"),
+
   // playback
   playbackState: () => req("GET", "/playback/state"),
   startShow: (id) => req("POST", `/playback/start/${id}`),

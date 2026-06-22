@@ -20,6 +20,14 @@ class MediaFileOut(BaseModel):
     color_primaries: str
     transfer_characteristics: str
     is_hdr10: bool
+    aspect_ratio: str
+    file_size: int
+    bitrate: int
+    audio_codec: str
+    audio_profile: str
+    audio_channels: int
+    audio_channel_layout: str
+    audio_format: str
     audio_summary: str
     scanned_at: datetime
 
@@ -123,3 +131,29 @@ class PlaybackStateOut(BaseModel):
 class SeatGridOut(BaseModel):
     rows: list[str]
     numbers: list[int]
+
+
+# ---- Settings / outputs ----------------------------------------------------
+class OutputDevice(BaseModel):
+    id: str
+    name: str
+    type: str  # sdi | hdmi | displayport | analog | spdif ...
+
+
+class OutputsOut(BaseModel):
+    video: list[OutputDevice]
+    audio: list[OutputDevice]
+
+
+class SettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    video_output_ids: list[str]
+    audio_output_id: str | None
+    audio_mode: str
+
+
+class SettingsUpdate(BaseModel):
+    video_output_ids: list[str] | None = None
+    audio_output_id: str | None = None
+    audio_mode: str | None = None

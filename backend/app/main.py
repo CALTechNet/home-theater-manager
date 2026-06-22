@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .database import init_db
-from .routers import media, playback, showings, tickets
+from .routers import media, playback, settings, showings, tickets
 from .services import scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +25,7 @@ app.include_router(media.router)
 app.include_router(showings.router)
 app.include_router(tickets.router)
 app.include_router(playback.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")

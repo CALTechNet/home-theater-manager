@@ -14,6 +14,8 @@ change, update this doc in the same PR.
 | Area | Status |
 |---|---|
 | Management plane (web UI, API, DB, scheduler, ticketing) | **Implemented (Phase 1)** |
+| Settings tab: video/audio output routing | **Implemented (Phase 1)** |
+| Rich media probe (aspect, audio profile, size, bitrate) | **Implemented (Phase 1)** |
 | Mock playback service (control API stand-in) | **Implemented (Phase 1)** |
 | TUI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
 | Real host playback service (NVDEC + DeckLink) | Designed, not built (Phase 3) |
@@ -116,15 +118,23 @@ benefit from Docker.
 - Single public surface. No other ports exposed externally.
 
 ### 3.2 Frontend — React + Vite (SPA)
-Four tabs:
+Five tabs:
 1. **Schedule** — week view (Mon–Sun columns) of all showings. Top-right
    **"New Showing"** button launches the wizard. Click a showing to edit/modify.
 2. **Media** — browse mounted media; tag files as **trailer** or **feature**;
-   shows probed duration, resolution, codec, HDR flags.
+   shows probed duration, resolution, aspect ratio, codec, HDR, audio format
+   (Atmos/DTS:X/PCM/…), file size, and bitrate.
 3. **Now Showing** — current/next-up showing with live playback state and the
    **shuttle controls** (Start Show / Play / Pause / End Show).
 4. **Ticketing** — pick a showing, choose seats (1A–6F), enter a name,
    tick drink/popcorn/candy, print. Unlimited reprints.
+5. **Settings** — assign playback to video outputs (DeckLink SDI, GPU HDMI/DP,
+   or several at once to mirror) and choose the audio output + mode
+   (passthrough/PCM). Devices are discovered from the playback service.
+
+The **New Showing** wizard surfaces full movie info for the chosen feature
+(aspect ratio, resolution, audio profile, runtime, file size, bitrate) so the
+operator can confirm the right file before scheduling.
 
 ### 3.3 Backend API — FastAPI (Python)
 - REST API under `/api`.
@@ -173,9 +183,16 @@ Four tabs:
 ```
 MediaFile
   id, path, kind {trailer|feature}, title,
-  duration_seconds (float), width, height, fps,
+  duration_seconds (float), width, height, fps, aspect_ratio,
   video_codec, color_primaries, transfer_characteristics, is_hdr10 (bool),
-  audio_summary, scanned_at
+  file_size (bytes), bitrate (bits/s),
+  audio_codec, audio_profile, audio_channels, audio_channel_layout,
+  audio_format (e.g. "Dolby Atmos (TrueHD)" / "DTS:X" / "PCM 5.1"),
+  audio_summary (all tracks), scanned_at
+
+AppSettings            # singleton (id=1): output routing
+  video_output_ids (JSON list — multiple = mirror to all),
+  audio_output_id, audio_mode {passthrough|pcm}, updated_at
 
 Showing
   id, title, feature_id → MediaFile,
@@ -205,13 +222,22 @@ Small JSON API the playback service exposes; the backend is the only client.
 
 ### 6.1 Endpoints
 ```
-POST /playback/load     { showing_id, items: [{path, role, position}] }
+POST /playback/load     { showing_id, items: [{path, role, position}],
+                          outputs: { video_outputs: [id...],
+                                     audio_output: id, audio_mode } }
 POST /playback/start
 POST /playback/pause
 POST /playback/resume
 POST /playback/stop      # "End Show"
 GET  /playback/state     -> { state, showing_id, position_seconds, current_item }
+GET  /outputs            -> { video: [{id,name,type}], audio: [{id,name,type}] }
 ```
+
+Output routing comes from `AppSettings` (the Settings tab) and is passed to the
+playback service on every `load`. Selecting multiple video outputs mirrors the
+feed (e.g. DeckLink SDI **and** a GPU HDMI output). The playback service
+enumerates available outputs via `GET /outputs` (DeckLink SDK + GPU in Phase 3;
+a fixed list in the mock).
 
 ### 6.2 Shuttle button mapping (Now Showing tab)
 - **Start Show** → `load` (if needed) + `start`

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { fmtBitrate, fmtResolution, fmtSize } from "../format.js";
 
 export default function Media() {
   const [media, setMedia] = useState([]);
@@ -49,9 +50,12 @@ export default function Media() {
               <th>Type</th>
               <th>Duration</th>
               <th>Resolution</th>
+              <th>Aspect</th>
               <th>Codec</th>
               <th>HDR</th>
               <th>Audio</th>
+              <th>Size</th>
+              <th>Bitrate</th>
               <th></th>
             </tr>
           </thead>
@@ -64,10 +68,13 @@ export default function Media() {
                 </td>
                 <td><span className={`badge ${m.kind}`}>{m.kind}</span></td>
                 <td>{Math.round(m.duration_seconds / 60)} min</td>
-                <td>{m.width}×{m.height}</td>
+                <td>{fmtResolution(m)}</td>
+                <td>{m.aspect_ratio || "—"}</td>
                 <td>{m.video_codec}</td>
                 <td>{m.is_hdr10 ? <span className="badge hdr">HDR10</span> : <span className="muted">SDR</span>}</td>
-                <td className="muted">{m.audio_summary}</td>
+                <td className="muted">{m.audio_format || m.audio_summary}</td>
+                <td>{fmtSize(m.file_size)}</td>
+                <td>{fmtBitrate(m.bitrate)}</td>
                 <td>
                   <div className="row">
                     <button
@@ -81,7 +88,7 @@ export default function Media() {
               </tr>
             ))}
             {media.length === 0 && (
-              <tr><td colSpan="8" className="muted">No media. Click "Scan library".</td></tr>
+              <tr><td colSpan="11" className="muted">No media. Click "Scan library".</td></tr>
             )}
           </tbody>
         </table>

@@ -10,6 +10,7 @@ from ..models import Showing
 from ..schemas import PlaybackStateOut
 from ..services import playback_client
 from ..services.playback_client import PlaybackUnavailable
+from ..services.settings_store import output_payload
 from ..services.showings import build_playlist_payload
 
 router = APIRouter(prefix="/api/playback", tags=["playback"])
@@ -39,7 +40,7 @@ def start_show(showing_id: int, db: Session = Depends(get_db)):
     if showing is None:
         raise HTTPException(404, "showing not found")
     try:
-        playback_client.load(showing.id, build_playlist_payload(showing))
+        playback_client.load(showing.id, build_playlist_payload(showing), output_payload(db))
         result = playback_client.start()
     except PlaybackUnavailable as e:
         raise HTTPException(503, f"playback service unavailable: {e}")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import MovieInfo from "./MovieInfo.jsx";
 
 // New Showing wizard (ARCHITECTURE.md §1): showtime -> feature -> trailers ->
 // review runtime -> create. Runtime is computed server-side (rounded to nearest
@@ -123,11 +124,13 @@ export default function Wizard({ onClose, onCreated }) {
                   <b>{f.title}</b>{" "}
                   {f.is_hdr10 && <span className="badge hdr">HDR10</span>}
                   <div className="muted">
-                    {fmtDur(f.duration_seconds)} · {f.width}×{f.height} · {f.video_codec}
+                    {fmtDur(f.duration_seconds)} · {f.width}×{f.height} ·{" "}
+                    {f.aspect_ratio} · {f.audio_format || f.video_codec}
                   </div>
                 </span>
               </label>
             ))}
+            {feature && <MovieInfo media={feature} />}
           </div>
         )}
 
@@ -176,6 +179,7 @@ export default function Wizard({ onClose, onCreated }) {
                 <b>{fmtDur(totalSeconds)}</b>
               </div>
             </div>
+            <MovieInfo media={feature} />
           </div>
         )}
 

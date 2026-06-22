@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models. Mirrors the data model in ARCHITECTURE.md §5."""
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -28,7 +28,19 @@ class MediaFile(Base):
     color_primaries: Mapped[str] = mapped_column(String, default="")
     transfer_characteristics: Mapped[str] = mapped_column(String, default="")
     is_hdr10: Mapped[bool] = mapped_column(Boolean, default=False)
-    audio_summary: Mapped[str] = mapped_column(String, default="")
+    aspect_ratio: Mapped[str] = mapped_column(String, default="")  # e.g. "2.39:1"
+
+    # Container-level technicals.
+    file_size: Mapped[int] = mapped_column(Integer, default=0)      # bytes
+    bitrate: Mapped[int] = mapped_column(Integer, default=0)        # bits/sec
+
+    # Primary audio stream profile.
+    audio_codec: Mapped[str] = mapped_column(String, default="")
+    audio_profile: Mapped[str] = mapped_column(String, default="")
+    audio_channels: Mapped[int] = mapped_column(Integer, default=0)
+    audio_channel_layout: Mapped[str] = mapped_column(String, default="")
+    audio_format: Mapped[str] = mapped_column(String, default="")   # e.g. "Dolby Atmos (TrueHD)"
+    audio_summary: Mapped[str] = mapped_column(String, default="")  # all audio tracks
 
     scanned_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
@@ -90,3 +102,21 @@ class Ticket(Base):
     printed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     showing: Mapped["Showing"] = relationship("Showing", back_populates="tickets")
+
+
+class AppSettings(Base):
+    """Singleton (id=1) holding output routing and other global settings."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+
+    # Video output target ids (selecting more than one mirrors to "both").
+    # ids come from the playback service's /outputs (e.g. "decklink:0", "gpu:hdmi-0").
+    video_output_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # Single audio output id (e.g. "sdi-embedded", "hdmi-0").
+    audio_output_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Audio handling: "passthrough" (bitstream) or "pcm" (decode to PCM).
+    audio_mode: Mapped[str] = mapped_column(String, default="passthrough")
+
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

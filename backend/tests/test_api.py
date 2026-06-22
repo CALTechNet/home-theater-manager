@@ -99,3 +99,43 @@ def test_seat_grid(client):
     grid = client.get("/api/tickets/seat-grid").json()
     assert grid["rows"] == ["A", "B", "C", "D", "E", "F"]
     assert grid["numbers"] == [1, 2, 3, 4, 5, 6]
+
+
+def test_settings_defaults_and_update(client):
+    s = client.get("/api/settings").json()
+    assert s["video_output_ids"] == []
+    assert s["audio_mode"] == "passthrough"
+
+    r = client.put("/api/settings", json={
+        "video_output_ids": ["decklink:0", "gpu:hdmi-0"],
+        "audio_output_id": "sdi-embedded",
+        "audio_mode": "pcm",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["video_output_ids"] == ["decklink:0", "gpu:hdmi-0"]
+    assert body["audio_output_id"] == "sdi-embedded"
+    assert body["audio_mode"] == "pcm"
+
+    # rejects invalid audio mode
+    assert client.put("/api/settings", json={"audio_mode": "bogus"}).status_code == 422
+
+
+def test_audio_format_detection():
+    from app.services.media_scan import _aspect_ratio, _audio_format
+
+    atmos = _audio_format({"codec_name": "truehd", "profile": "",
+                           "channel_layout": "7.1", "channels": 8,
+                           "tags": {"title": "TrueHD Atmos 7.1"}})
+    assert "Atmos" in atmos
+
+    dtsx = _audio_format({"codec_name": "dts", "profile": "DTS-HD MA + DTS:X",
+                          "channels": 8, "channel_layout": "7.1"})
+    assert dtsx == "DTS:X"
+
+    ddp = _audio_format({"codec_name": "eac3", "profile": "", "channels": 6,
+                         "channel_layout": "5.1"})
+    assert ddp == "Dolby Digital+ 5.1"
+
+    assert _aspect_ratio({"display_aspect_ratio": "0:1"}, 3840, 2160) == "16:9"
+    assert _aspect_ratio({}, 3840, 1600) == "2.40:1"
