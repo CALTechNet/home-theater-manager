@@ -180,6 +180,7 @@ install_htm_command() {
 # ---------------------------------------------------------------------------
 wt() {
   # Keep whiptail's UI attached to the real terminal while still capturing
+
   # form/menu answers in command substitutions. Redirection order matters:
   # whiptail/newt draws on stdout and emits answers on stderr.
   whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
@@ -191,6 +192,10 @@ wt_info() {
   # whiptail msgbox buttons can be focused but not activatable by Enter.
   whiptail --backtitle "Home Theater Manager Setup" --title "$1" --infobox "$2" "$3" "$4" >"$TTY" 2>&1 <"$TTY" || true
   sleep "${5:-1}"
+
+
+  whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+
 }
 
 run_tui() {
@@ -199,6 +204,7 @@ run_tui() {
     return
   fi
 
+
   wt_info "Welcome" \
     "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nStarting setup..." 14 64 1
 
@@ -206,10 +212,15 @@ run_tui() {
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
     wt_info "Detected hardware" \
       "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66 2
+=======
+  local intro="This wizard configures your Home Theater Manager."
+  if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
+    intro="$intro\n\nDetected hardware:\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any time with: sudo htm"
+
   fi
 
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
-    "Name printed on tickets and shown in the UI:" 10 64 "$HTM_THEATER_NAME")"
+    "$intro\n\nName printed on tickets and shown in the UI:" 18 72 "$HTM_THEATER_NAME")"
 
   HTM_MEDIA_HOST_PATH="$(wt --title "Media location" --inputbox \
     "Host path to your movies/trailers (your NFS/SMB mount).\nMounted read-only into the app." 11 64 "$HTM_MEDIA_HOST_PATH")"
