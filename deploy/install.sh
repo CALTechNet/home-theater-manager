@@ -77,13 +77,15 @@ detect_os() {
 # Dependency installation
 # ---------------------------------------------------------------------------
 install_base() {
-  log "Installing base packages (git, curl, newt, pciutils, usbutils)..."
+  log "Installing base packages (git, curl, whiptail/newt, pciutils, usbutils)..."
   if [ "$PKG" = "apt" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
     apt-get install -y ca-certificates curl git whiptail pciutils usbutils
   else
     dnf install -y ca-certificates curl git newt pciutils usbutils
+    command -v whiptail >/dev/null 2>&1 || dnf install -y whiptail || true
+    command -v whiptail >/dev/null 2>&1 || warn "whiptail was not found after package install; installer will use non-interactive defaults."
   fi
 }
 
@@ -105,8 +107,13 @@ install_docker() {
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   else
     dnf install -y dnf-plugins-core || true
-    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo 2>/dev/null \
-      || dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/centos/docker-ce.repo
+    if command -v dnf-3 >/dev/null 2>&1; then
+      dnf-3 config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    elif dnf config-manager --help 2>&1 | grep -q -- '--add-repo'; then
+      dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    else
+      dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/centos/docker-ce.repo
+    fi
     dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   fi
   systemctl enable --now docker
@@ -192,10 +199,6 @@ wt_info() {
   # whiptail msgbox buttons can be focused but not activatable by Enter.
   whiptail --backtitle "Home Theater Manager Setup" --title "$1" --infobox "$2" "$3" "$4" >"$TTY" 2>&1 <"$TTY" || true
   sleep "${5:-1}"
-
-
-  whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
-
 }
 
 run_tui() {
@@ -204,19 +207,12 @@ run_tui() {
     return
   fi
 
-
   wt_info "Welcome" \
     "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nStarting setup..." 14 64 1
 
-  # Surface what auto-discovery found so the operator can confirm hardware.
-  if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
-    wt_info "Detected hardware" \
-      "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66 2
-=======
   local intro="This wizard configures your Home Theater Manager."
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
     intro="$intro\n\nDetected hardware:\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any time with: sudo htm"
-
   fi
 
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
