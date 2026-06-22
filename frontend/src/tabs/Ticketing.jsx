@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
+// Tickets are generated server-side as PDFs (receipt or full-page color). The
+// browser opens the PDF so the operator can print to any printer they have.
 export default function Ticketing({ initialShowingId }) {
   const [showings, setShowings] = useState([]);
   const [grid, setGrid] = useState({ rows: [], numbers: [] });
@@ -8,7 +10,8 @@ export default function Ticketing({ initialShowingId }) {
   const [seat, setSeat] = useState("");
   const [name, setName] = useState("");
   const [extras, setExtras] = useState({ drink: false, popcorn: false, candy: false });
-  const [preview, setPreview] = useState("");
+  const [style, setStyle] = useState("receipt");
+  const [pdfUrl, setPdfUrl] = useState("");
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -23,11 +26,27 @@ export default function Ticketing({ initialShowingId }) {
     else setHistory([]);
   }, [showingId, msg]);
 
-  async function print() {
+  // Open the PDF in a new tab and trigger the browser's print dialog.
+  function openAndPrint(url) {
+    setPdfUrl(url);
+    const win = window.open(url, "_blank");
+    if (win) {
+      win.addEventListener("load", () => {
+        try {
+          win.focus();
+          win.print();
+        } catch {
+          /* user can print manually */
+        }
+      });
+    }
+  }
+
+  async function generate() {
     setError("");
     setMsg("");
     try {
-      const r = await api.printTicket({
+      const t = await api.createTicket({
         showing_id: Number(showingId),
         seat: seat || null,
         name: name || null,
@@ -35,21 +54,16 @@ export default function Ticketing({ initialShowingId }) {
         incl_popcorn: extras.popcorn,
         incl_candy: extras.candy,
       });
-      setPreview(r.rendered_text);
-      setMsg(r.printed ? "Sent to printer ✓" : "Rendered (no printer configured)");
+      const url = api.ticketPdfUrl(t.id, style);
+      setMsg(`Ticket #${t.id} created`);
+      openAndPrint(url);
     } catch (e) {
       setError(e.message);
     }
   }
 
-  async function reprint(id) {
-    try {
-      const r = await api.reprint(id);
-      setPreview(r.rendered_text);
-      setMsg("Reprinted ✓");
-    } catch (e) {
-      setError(e.message);
-    }
+  function reprint(id) {
+    openAndPrint(api.ticketPdfUrl(id, style));
   }
 
   return (
@@ -123,18 +137,30 @@ export default function Ticketing({ initialShowingId }) {
               </div>
             </div>
 
-            <button className="btn" disabled={!showingId} onClick={print}>
-              🎟 Print Ticket
+            <div>
+              <div className="muted">Ticket style</div>
+              <select value={style} onChange={(e) => setStyle(e.target.value)}>
+                <option value="receipt">Thermal receipt (80mm)</option>
+                <option value="fullpage">Full-page color (8.5×11)</option>
+              </select>
+            </div>
+
+            <button className="btn" disabled={!showingId} onClick={generate}>
+              🎟 Generate & Print
             </button>
           </div>
         </div>
 
         <div className="card" style={{ flex: 1 }}>
-          <div className="muted">Receipt preview</div>
-          {preview ? (
-            <div className="receipt" style={{ marginTop: 8 }}>{preview}</div>
+          <div className="muted">PDF preview</div>
+          {pdfUrl ? (
+            <iframe
+              title="ticket"
+              src={pdfUrl}
+              style={{ width: "100%", height: 420, border: "1px solid var(--border)", borderRadius: 6, marginTop: 8, background: "#fff" }}
+            />
           ) : (
-            <p className="muted">Print a ticket to see the receipt.</p>
+            <p className="muted">Generate a ticket to preview the PDF here.</p>
           )}
 
           <div className="muted" style={{ marginTop: 16 }}>

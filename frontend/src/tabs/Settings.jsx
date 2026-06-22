@@ -8,6 +8,7 @@ export default function Settings() {
   const [videoIds, setVideoIds] = useState([]);
   const [audioId, setAudioId] = useState("");
   const [audioMode, setAudioMode] = useState("passthrough");
+  const [hardware, setHardware] = useState(null);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -20,6 +21,7 @@ export default function Settings() {
     api.listOutputs().then(setOutputs).catch((e) =>
       setError(`Could not list outputs (${e.message}). Is the playback service up?`),
     );
+    api.getHardware().then(setHardware).catch(() => {});
   }, []);
 
   const toggleVideo = (id) =>
@@ -101,6 +103,38 @@ export default function Settings() {
 
       <div style={{ marginTop: 16 }}>
         <button className="btn" onClick={save}>Save settings</button>
+      </div>
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <h3 style={{ marginTop: 0 }}>Detected hardware</h3>
+        {!hardware || hardware.available === false ? (
+          <p className="muted">
+            No discovery data yet. Run <code>sudo htm → Re-discover hardware</code> on
+            the server (e.g. after swapping a GPU, DeckLink, or printer).
+          </p>
+        ) : (
+          <div className="stack">
+            <div className="row" style={{ gap: 24 }}>
+              <span>Primary GPU: <b>{hardware.primary_gpu_vendor}</b> <span className="muted">(decode: {hardware.primary_hwaccel})</span></span>
+              <span>DeckLink SDI: <b>{hardware.has_decklink ? "yes" : "no"}</b></span>
+            </div>
+            {(hardware.gpus || []).map((g, i) => (
+              <div key={i} className="muted">GPU — {g.vendor} {g.model} ({g.kind}, decode {g.decode})</div>
+            ))}
+            {(hardware.decklink || []).map((d, i) => (
+              <div key={i} className="muted">Capture — {d.model}</div>
+            ))}
+            {(hardware.printers || []).map((p, i) => (
+              <div key={i} className="muted">Printer — {p.vendor} {p.name}</div>
+            ))}
+            {(hardware.audio || []).map((a, i) => (
+              <div key={i} className="muted">Audio — card {a.index}: {a.name}</div>
+            ))}
+            <div className="muted" style={{ fontSize: 12 }}>
+              Discovered {hardware.discovered_at}. Re-run with <code>sudo htm</code>.
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

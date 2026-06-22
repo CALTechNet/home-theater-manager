@@ -12,7 +12,6 @@ import pytest
 _tmp = tempfile.mkdtemp()
 os.environ["HTM_DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["HTM_MEDIA_ROOT"] = _tmp
-os.environ["HTM_PRINTER_KIND"] = "none"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -76,7 +75,7 @@ def test_create_showing_computes_runtime(client):
     assert body["items"][-1]["role"] == "feature"
 
 
-def test_ticket_render_and_copy_index(client):
+def test_ticket_copy_index_and_pdf(client):
     feature = _make_media(client, "feature", duration=3600.0)
     s = client.post("/api/showings", json={
         "title": "Ticket Film",
@@ -89,10 +88,18 @@ def test_ticket_render_and_copy_index(client):
     r1 = client.post("/api/tickets", json=payload)
     r2 = client.post("/api/tickets", json=payload)
     assert r1.status_code == 201
-    assert r1.json()["ticket"]["copy_index"] == 1
-    assert r2.json()["ticket"]["copy_index"] == 2
-    assert "Popcorn" in r1.json()["rendered_text"]
-    assert "3C" in r1.json()["rendered_text"]
+    assert r1.json()["copy_index"] == 1
+    assert r2.json()["copy_index"] == 2
+
+    ticket_id = r1.json()["id"]
+    # Both PDF styles render and return a valid PDF.
+    for style in ("receipt", "fullpage"):
+        pdf = client.get(f"/api/tickets/{ticket_id}/pdf?style={style}")
+        assert pdf.status_code == 200
+        assert pdf.headers["content-type"] == "application/pdf"
+        assert pdf.content[:4] == b"%PDF"
+    # Invalid style is rejected.
+    assert client.get(f"/api/tickets/{ticket_id}/pdf?style=bogus").status_code == 422
 
 
 def test_seat_grid(client):

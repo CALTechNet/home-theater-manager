@@ -1,18 +1,18 @@
-"""Ticketing endpoints: seat grid, print, list, reprint."""
-from fastapi import APIRouter, Depends, HTTPException
+"""Ticketing endpoints: seat grid, create, list, and printable PDF generation.
+
+The server generates a PDF (receipt or full-page color); the operator prints it
+from their workstation to whatever printer they have.
+"""
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
 from ..models import Showing, Ticket
-from ..schemas import (
-    SeatGridOut,
-    TicketCreate,
-    TicketOut,
-    TicketPrintResult,
-)
-from ..services.ticketing import print_ticket
+from ..schemas import SeatGridOut, TicketCreate, TicketOut
+from ..services.ticketing import generate_pdf
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 settings = get_settings()
@@ -33,8 +33,8 @@ def list_tickets(showing_id: int | None = None, db: Session = Depends(get_db)):
     return q.order_by(Ticket.printed_at.desc()).all()
 
 
-@router.post("", response_model=TicketPrintResult, status_code=201)
-def create_and_print(body: TicketCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=TicketOut, status_code=201)
+def create_ticket(body: TicketCreate, db: Session = Depends(get_db)):
     showing = db.get(Showing, body.showing_id)
     if showing is None:
         raise HTTPException(404, "showing not found")
@@ -57,18 +57,25 @@ def create_and_print(body: TicketCreate, db: Session = Depends(get_db)):
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
-
-    printed, text = print_ticket(showing, ticket)
-    return TicketPrintResult(ticket=ticket, printed=printed, rendered_text=text)
+    return ticket
 
 
-@router.post("/{ticket_id}/reprint", response_model=TicketPrintResult)
-def reprint(ticket_id: int, db: Session = Depends(get_db)):
+@router.get("/{ticket_id}/pdf")
+def ticket_pdf(
+    ticket_id: int,
+    style: str = Query("receipt", pattern="^(receipt|fullpage)$"),
+    db: Session = Depends(get_db),
+):
     ticket = db.get(Ticket, ticket_id)
     if ticket is None:
         raise HTTPException(404, "ticket not found")
     showing = db.get(Showing, ticket.showing_id)
     if showing is None:
         raise HTTPException(404, "showing not found")
-    printed, text = print_ticket(showing, ticket)
-    return TicketPrintResult(ticket=ticket, printed=printed, rendered_text=text)
+    pdf = generate_pdf(showing, ticket, style)
+    filename = f"ticket_{ticket.id}_{style}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

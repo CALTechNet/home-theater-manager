@@ -27,7 +27,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    """Create tables. Phase 1 uses create_all; migrations come later (Alembic)."""
-    from . import models  # noqa: F401  (register models on Base)
+    """Bring the database schema up to date (additive migrations)."""
+    from .migrations import run_migrations
 
-    Base.metadata.create_all(bind=engine)
+    run_migrations(engine)

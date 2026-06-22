@@ -17,19 +17,25 @@ change, update this doc in the same PR.
 | Settings tab: video/audio output routing | **Implemented (Phase 1)** |
 | Rich media probe (aspect, audio profile, size, bitrate) | **Implemented (Phase 1)** |
 | Mock playback service (control API stand-in) | **Implemented (Phase 1)** |
+| Additive schema migrations (run on startup) | **Implemented** |
+| PDF tickets (80mm receipt + 8.5×11 color) | **Implemented (Phase 1)** |
 | TUI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
-| Real host playback service (NVDEC + DeckLink) | Designed, not built (Phase 3) |
+| Hardware auto-discovery (NVIDIA/AMD/Intel + iGPU, DeckLink, printer, audio) | **Implemented** |
+| `htm` management TUI (re-discover, reconfigure, logs, update) | **Implemented** |
+| Real host playback service (multi-vendor decode + DeckLink) | Designed, not built (Phase 3) |
 | HDR10 SDI signaling | Designed (Phase 4) |
 
 ### Repository layout
 ```
-backend/        FastAPI app: routers/ (media, showings, tickets, playback),
-                services/ (media_scan, scheduler, showings, ticketing,
-                playback_client), models.py, schemas.py, config.py, database.py
-frontend/       React + Vite SPA (tabs/ + components/Wizard.jsx),
-                served by Caddy (TLS :443 + /api reverse proxy)
+backend/        FastAPI app: routers/ (media, showings, tickets, playback,
+                settings), services/ (media_scan, scheduler, showings,
+                ticketing[PDF], playback_client, settings_store),
+                migrations.py, models.py, schemas.py, config.py, database.py
+frontend/       React + Vite SPA (tabs/ + components/), Caddy (TLS :443 + /api)
 playback-mock/  FastAPI mock of the control API (§6) with a simulated clock
-deploy/         install.sh — curl|bash TUI installer (whiptail)
+deploy/         install.sh (curl|bash installer), discover.sh (hardware probe),
+                htm-menu.sh (management TUI, installed as `htm`)
+runtime/        hardware discovery output (gitignored), mounted at /runtime
 docker-compose.yml, .env.example
 ```
 
@@ -46,8 +52,9 @@ docker-compose.yml, .env.example
 - "New Showing" wizard: pick showtime → pick feature file → compute runtime →
   add trailers → generate tickets.
 - Media sourced from a remote server over **NFS/SMB** (mounted), or local storage.
-- Thermal ticket printing (Epson ESC/POS): seat selector (1A–6F), name field,
-  and drink / popcorn / candy checkboxes. Unlimited reprints.
+- **PDF ticket generation** (80mm thermal receipt **or** 8.5×11 color), printed
+  from the operator's workstation to any reachable printer: seat selector
+  (1A–6F), name field, drink / popcorn / candy checkboxes. Unlimited reprints.
 - Manual transport controls (shuttle): **Start Show / Play / Pause / End Show**.
 
 ### Non-Goals (v1)
@@ -151,14 +158,26 @@ operator can confirm the right file before scheduling.
   with **NVDEC** decode and the **decklink** output muxer.
 - Maintains a single playback state machine (§6.3) and reports it upstream.
 
-### 3.5 Database — SQLite
+### 3.5 Database — SQLite + additive migrations
 - Single-file DB on a Docker volume. Sufficient for one server. Schema is written
   to be Postgres-portable (no SQLite-only features in app logic).
+- **Migrations** (`backend/app/migrations.py`) run on startup: `create_all` for
+  new tables plus additive `ALTER TABLE ... ADD COLUMN` for any columns the
+  models gained. Idempotent and safe to re-run, so upgrades pick up new fields
+  without resetting the volume. Destructive/data migrations would graduate to
+  Alembic (Phase 2).
 
-### 3.6 Printer — Epson thermal (ESC/POS)
-- Driven by `python-escpos`. USB or network connection.
-- Printer is **attached to the server**; the web UI triggers prints, the server
-  performs them. (Browser-side printing is a possible future fallback.)
+### 3.6 Tickets — server-generated PDF, client-printed
+- The server **generates a PDF** (`reportlab`) in one of two styles — an 80mm
+  thermal receipt or a full-page 8.5×11 color "movie ticket" — via
+  `GET /api/tickets/{id}/pdf?style=receipt|fullpage`.
+- The **operator's workstation prints it** to whatever printer it can reach
+  (network, USB, thermal, or a normal color printer). The server has **no
+  printer driver** and no direct printer connection — its only outputs are the
+  projector (SDI) and audio. This matches the deployment reality: the management
+  machine (browser) is where printers live.
+- Tickets are still recorded in the DB (seat, name, extras, copy index) so
+  reprints are tracked.
 
 ---
 
@@ -259,7 +278,12 @@ on the playback service. Manual shuttle controls can override at any time.
 
 ## 7. Playback Pipeline (ffmpeg + DeckLink)
 
-- **Decode:** NVDEC (`-hwaccel cuda`) for efficient HEVC/AV1 HDR decode.
+- **Decode (multi-vendor):** chosen from the discovered GPU —
+  **NVIDIA** NVDEC (`-hwaccel cuda`), **AMD** VAAPI (`-hwaccel vaapi` via
+  `/dev/dri`, optionally ROCm), **Intel** QSV/VAAPI (integrated GPUs). The
+  installer's `discover.sh` records the primary vendor + hwaccel hint; the
+  Phase 3 service uses it (and can still enumerate at runtime). Software decode
+  is the fallback when no supported GPU is present.
 - **Output:** `-f decklink "<device name>"` muxer to the SDI card.
 - **Playlist:** trailers then feature, played as an ordered sequence. Approach
   chosen during implementation: concat demuxer vs. sequential ffmpeg invocations
@@ -292,12 +316,26 @@ on the playback service. Manual shuttle controls can override at any time.
   Debian/RHEL/Alma families).
 - **`deploy/install.sh`** is a `curl … | sudo bash` installer that:
   1. detects the distro (apt vs dnf) from `/etc/os-release`,
-  2. installs Docker Engine + Compose plugin and `whiptail`/`newt`,
+  2. installs Docker Engine + Compose plugin, `whiptail`/`newt`, `pciutils`, `usbutils`,
   3. clones the repo to `/opt/home-theater-manager`,
-  4. runs a **whiptail TUI wizard** (theater name, media path, seat grid,
-     printer) — reading from `/dev/tty` so it works through a curl pipe,
-  5. writes `.env` and runs `docker compose up -d --build`.
+  4. runs **`discover.sh`** to auto-detect hardware (GPUs incl. integrated,
+     DeckLink, USB thermal printers, audio) → `runtime/hardware.json` + hints,
+  5. installs the **`htm`** management command,
+  6. runs a **whiptail TUI wizard** (theater name, media path, seat grid, default
+     ticket style) — reading from `/dev/tty` so it works through a curl pipe,
+  7. writes `.env` and runs `docker compose up -d --build`.
 - Non-interactive mode (`--no-tui` + env vars) is supported for automation.
+
+### 9.0.1 `htm` management TUI (`deploy/htm-menu.sh`)
+Re-runnable any time (`sudo htm`): **re-discover hardware** (after swapping a
+GPU/DeckLink/printer), set default ticket style, view status/logs, start/stop/
+restart, and update (git pull + rebuild). Discovery results feed the Settings
+tab's "Detected hardware" panel via `/runtime/hardware.json`.
+
+### 9.0.2 Multi-vendor GPU passthrough (Phase 3 playback)
+- **NVIDIA:** NVIDIA Container Toolkit + `--gpus all` (or compose `deploy.resources`).
+- **AMD / Intel (incl. integrated):** pass `/dev/dri` for VAAPI; AMD ROCm adds
+  `/dev/kfd`. The discovered `HTM_HWACCEL` hint selects the ffmpeg decode path.
 
 ### 9.1 Host prerequisites for Phase 3 (real playback; scripted later)
 - NVIDIA driver + NVIDIA Container Toolkit.

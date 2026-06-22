@@ -24,6 +24,8 @@ services:
     volumes:
       - htm-data:/data
       - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
+      # Hardware discovery results (deploy/discover.sh) shown in the Settings tab.
+      - ./runtime:/runtime:ro
     # Backend is reached only through Caddy; no host port needed.
     expose:
       - "8000"

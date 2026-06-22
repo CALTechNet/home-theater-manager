@@ -114,12 +114,6 @@ class TicketOut(BaseModel):
     printed_at: datetime
 
 
-class TicketPrintResult(BaseModel):
-    ticket: TicketOut
-    printed: bool          # True if sent to hardware
-    rendered_text: str     # human-readable preview of the receipt
-
-
 # ---- Playback --------------------------------------------------------------
 class PlaybackStateOut(BaseModel):
     state: str

@@ -44,13 +44,15 @@ export const api = {
   seatGrid: () => req("GET", "/tickets/seat-grid"),
   listTickets: (showingId) =>
     req("GET", `/tickets${showingId ? `?showing_id=${showingId}` : ""}`),
-  printTicket: (body) => req("POST", "/tickets", body),
-  reprint: (id) => req("POST", `/tickets/${id}/reprint`),
+  createTicket: (body) => req("POST", "/tickets", body),
+  // PDF is served directly (not JSON) — build the URL for the browser to open.
+  ticketPdfUrl: (id, style) => `/api/tickets/${id}/pdf?style=${style}`,
 
   // settings
   getSettings: () => req("GET", "/settings"),
   updateSettings: (body) => req("PUT", "/settings", body),
   listOutputs: () => req("GET", "/settings/outputs"),
+  getHardware: () => req("GET", "/settings/hardware"),
 
   // playback
   playbackState: () => req("GET", "/playback/state"),

@@ -25,11 +25,7 @@ HTM_THEATER_NAME="${HTM_THEATER_NAME:-Home Cinema}"
 HTM_MEDIA_HOST_PATH="${HTM_MEDIA_HOST_PATH:-/mnt/media}"
 HTM_SEAT_MAX_ROW="${HTM_SEAT_MAX_ROW:-F}"
 HTM_SEAT_MAX_NUMBER="${HTM_SEAT_MAX_NUMBER:-6}"
-HTM_PRINTER_KIND="${HTM_PRINTER_KIND:-none}"
-HTM_PRINTER_HOST="${HTM_PRINTER_HOST:-}"
-HTM_PRINTER_PORT="${HTM_PRINTER_PORT:-9100}"
-HTM_PRINTER_USB_VENDOR="${HTM_PRINTER_USB_VENDOR:-}"
-HTM_PRINTER_USB_PRODUCT="${HTM_PRINTER_USB_PRODUCT:-}"
+HTM_TICKET_STYLE="${HTM_TICKET_STYLE:-receipt}"
 
 USE_TUI=1
 for arg in "$@"; do
@@ -79,13 +75,13 @@ detect_os() {
 # Dependency installation
 # ---------------------------------------------------------------------------
 install_base() {
-  log "Installing base packages (git, curl, newt)..."
+  log "Installing base packages (git, curl, newt, pciutils, usbutils)..."
   if [ "$PKG" = "apt" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
-    apt-get install -y ca-certificates curl git whiptail
+    apt-get install -y ca-certificates curl git whiptail pciutils usbutils
   else
-    dnf install -y ca-certificates curl git newt
+    dnf install -y ca-certificates curl git newt pciutils usbutils
   fi
 }
 
@@ -131,6 +127,25 @@ fetch_repo() {
   ok "Repository ready at $INSTALL_DIR"
 }
 
+# Hardware auto-discovery (GPU/DeckLink/printer/audio) -> hardware.json + .env.
+run_discovery() {
+  log "Auto-discovering connected hardware..."
+  mkdir -p "$INSTALL_DIR/runtime"
+  bash "$INSTALL_DIR/deploy/discover.sh" "$INSTALL_DIR/runtime" || warn "Discovery had issues; continuing."
+  # Pull primary GPU / DeckLink hints into this shell for .env.
+  if [ -r "$INSTALL_DIR/runtime/hardware.env" ]; then
+    # shellcheck disable=SC1091
+    . "$INSTALL_DIR/runtime/hardware.env"
+  fi
+}
+
+# Install a global `htm` command pointing at the management menu.
+install_htm_command() {
+  ln -sf "$INSTALL_DIR/deploy/htm-menu.sh" /usr/local/bin/htm
+  chmod +x "$INSTALL_DIR/deploy/htm-menu.sh" "$INSTALL_DIR/deploy/discover.sh" 2>/dev/null || true
+  ok "Installed 'htm' management command (run: sudo htm)."
+}
+
 # ---------------------------------------------------------------------------
 # TUI wizard (whiptail). Falls back to plain prompts without a TTY.
 # ---------------------------------------------------------------------------
@@ -143,7 +158,13 @@ run_tui() {
   fi
 
   wt --title "Welcome" --msgbox \
-    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, seat grid, and thermal printer.\n\nPress OK to begin." 14 64
+    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nPress OK to begin." 14 64
+
+  # Surface what auto-discovery found so the operator can confirm hardware.
+  if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
+    wt --title "Detected hardware" --msgbox \
+      "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66
+  fi
 
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
     "Name printed on tickets and shown in the UI:" 10 64 "$HTM_THEATER_NAME")"
@@ -157,26 +178,15 @@ run_tui() {
   HTM_SEAT_MAX_NUMBER="$(wt --title "Seat grid — seats per row" --inputbox \
     "Seats per row (1..N). E.g. 6 gives 1-6." 10 64 "$HTM_SEAT_MAX_NUMBER")"
 
-  HTM_PRINTER_KIND="$(wt --title "Thermal printer" --menu \
-    "Select your Epson-style receipt printer connection:" 16 64 4 \
-    none    "No printer (render receipts on screen only)" \
-    network "Network printer (IP + port 9100)" \
-    usb     "USB printer (vendor/product IDs)" \
-    file    "Write receipts to files (debugging)" )"
-
-  case "$HTM_PRINTER_KIND" in
-    network)
-      HTM_PRINTER_HOST="$(wt --title "Printer IP" --inputbox "Printer IP address:" 10 64 "$HTM_PRINTER_HOST")"
-      HTM_PRINTER_PORT="$(wt --title "Printer port" --inputbox "Printer TCP port:" 10 64 "$HTM_PRINTER_PORT")"
-      ;;
-    usb)
-      HTM_PRINTER_USB_VENDOR="$(wt --title "USB vendor id" --inputbox "Vendor id in hex (from lsusb), e.g. 0x04b8:" 10 64 "${HTM_PRINTER_USB_VENDOR:-0x04b8}")"
-      HTM_PRINTER_USB_PRODUCT="$(wt --title "USB product id" --inputbox "Product id in hex (from lsusb), e.g. 0x0e15:" 10 64 "${HTM_PRINTER_USB_PRODUCT:-0x0e15}")"
-      ;;
-  esac
+  # Tickets are generated as PDFs and printed from the operator's workstation to
+  # any printer it can reach. Pick the default style (switchable per-print in UI).
+  HTM_TICKET_STYLE="$(wt --title "Default ticket style" --menu \
+    "Tickets are generated as PDFs you print from your workstation to any\nprinter (network, USB, thermal, or a normal color printer).\n\nDefault style (changeable per print in the UI):" 18 70 2 \
+    receipt  "Thermal receipt (80mm roll)" \
+    fullpage "Full-page color ticket (8.5x11)" )"
 
   wt --title "Confirm" --yesno \
-    "Ready to deploy with:\n\n Theater : $HTM_THEATER_NAME\n Media   : $HTM_MEDIA_HOST_PATH\n Seats   : A-$HTM_SEAT_MAX_ROW x 1-$HTM_SEAT_MAX_NUMBER\n Printer : $HTM_PRINTER_KIND\n\nBuild and start now?" 16 64 \
+    "Ready to deploy with:\n\n Theater : $HTM_THEATER_NAME\n Media   : $HTM_MEDIA_HOST_PATH\n Seats   : A-$HTM_SEAT_MAX_ROW x 1-$HTM_SEAT_MAX_NUMBER\n GPU     : ${HTM_GPU_VENDOR:-Unknown} / DeckLink ${HTM_HAS_DECKLINK:-false}\n Tickets : $HTM_TICKET_STYLE PDF (printed from your workstation)\n\nBuild and start now?" 18 66 \
     || die "Aborted by user."
 }
 
@@ -195,12 +205,12 @@ HTM_PLAYBACK_URL=http://playback:9000
 HTM_THEATER_NAME=${HTM_THEATER_NAME}
 HTM_SEAT_MAX_ROW=${HTM_SEAT_MAX_ROW}
 HTM_SEAT_MAX_NUMBER=${HTM_SEAT_MAX_NUMBER}
-HTM_PRINTER_KIND=${HTM_PRINTER_KIND}
-HTM_PRINTER_HOST=${HTM_PRINTER_HOST}
-HTM_PRINTER_PORT=${HTM_PRINTER_PORT}
-HTM_PRINTER_USB_VENDOR=${HTM_PRINTER_USB_VENDOR}
-HTM_PRINTER_USB_PRODUCT=${HTM_PRINTER_USB_PRODUCT}
-HTM_PRINTER_FILE_PATH=/data/tickets
+HTM_TICKET_STYLE=${HTM_TICKET_STYLE:-receipt}
+HTM_HARDWARE_FILE=/runtime/hardware.json
+# Hardware hints from auto-discovery (informational; consumed by Phase 3 playback)
+HTM_GPU_VENDOR=${HTM_GPU_VENDOR:-Unknown}
+HTM_HWACCEL=${HTM_HWACCEL:-none}
+HTM_HAS_DECKLINK=${HTM_HAS_DECKLINK:-false}
 EOF
   # Ensure the media path exists so the read-only mount doesn't fail.
   mkdir -p "$HTM_MEDIA_HOST_PATH" 2>/dev/null || warn "Could not create $HTM_MEDIA_HOST_PATH (mount it before first scan)."
@@ -232,6 +242,12 @@ ${c_grn}Home Theater Manager is running.${c_off}
 
   Config: $INSTALL_DIR/.env   (re-run installer or edit, then 'docker compose up -d')
 
+  Manage: sudo htm   (TUI: re-discover hardware, reconfigure, logs, update)
+
+Printing: tickets print from the workstation/browser — pick any printer it can
+reach (network, USB, thermal, or a normal 8.5x11 color printer) in the print
+dialog. The server only outputs to the projector + audio.
+
 Next: open the Media tab and click "Scan library" to index your files.
 NOTE: Phase 1 uses a MOCK playback engine. Real GPU/DeckLink output is Phase 3.
 EOF
@@ -243,6 +259,8 @@ main() {
   install_base
   install_docker
   fetch_repo
+  run_discovery
+  install_htm_command
   run_tui
   write_env
   deploy
