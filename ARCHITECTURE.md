@@ -9,6 +9,30 @@ change, update this doc in the same PR.
 
 ---
 
+## 0. Implementation Status
+
+| Area | Status |
+|---|---|
+| Management plane (web UI, API, DB, scheduler, ticketing) | **Implemented (Phase 1)** |
+| Mock playback service (control API stand-in) | **Implemented (Phase 1)** |
+| TUI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
+| Real host playback service (NVDEC + DeckLink) | Designed, not built (Phase 3) |
+| HDR10 SDI signaling | Designed (Phase 4) |
+
+### Repository layout
+```
+backend/        FastAPI app: routers/ (media, showings, tickets, playback),
+                services/ (media_scan, scheduler, showings, ticketing,
+                playback_client), models.py, schemas.py, config.py, database.py
+frontend/       React + Vite SPA (tabs/ + components/Wizard.jsx),
+                served by Caddy (TLS :443 + /api reverse proxy)
+playback-mock/  FastAPI mock of the control API (§6) with a simulated clock
+deploy/         install.sh — curl|bash TUI installer (whiptail)
+docker-compose.yml, .env.example
+```
+
+---
+
 ## 1. Goals & Non-Goals
 
 ### Goals
@@ -237,7 +261,19 @@ on the playback service. Manual shuttle controls can override at any time.
 
 ## 9. Deployment
 
-### 9.1 Host prerequisites (documented, scripted later)
+### 9.0 Supported OS & installer
+- Target OSes: **Ubuntu Server 22.04/24.04** and **Rocky Linux 9/10** (and their
+  Debian/RHEL/Alma families).
+- **`deploy/install.sh`** is a `curl … | sudo bash` installer that:
+  1. detects the distro (apt vs dnf) from `/etc/os-release`,
+  2. installs Docker Engine + Compose plugin and `whiptail`/`newt`,
+  3. clones the repo to `/opt/home-theater-manager`,
+  4. runs a **whiptail TUI wizard** (theater name, media path, seat grid,
+     printer) — reading from `/dev/tty` so it works through a curl pipe,
+  5. writes `.env` and runs `docker compose up -d --build`.
+- Non-interactive mode (`--no-tui` + env vars) is supported for automation.
+
+### 9.1 Host prerequisites for Phase 3 (real playback; scripted later)
 - NVIDIA driver + NVIDIA Container Toolkit.
 - Blackmagic **Desktop Video** driver.
 - NFS/SMB mount of remote media at `/mnt/media`.
@@ -272,12 +308,14 @@ on the playback service. Manual shuttle controls can override at any time.
 
 ## 11. Phased Plan
 
-- **Phase 0 — Design (this doc).**
+- **Phase 0 — Design (this doc).** ✅
 - **Phase 1 — Management plane:** FastAPI + React + SQLite + Caddy in Compose;
   all four tabs functional against a **mock** playback service; ffprobe-based
-  media scan; ticket ESC/POS rendering (print to file/mock).
-- **Phase 2 — Wizard & scheduling:** New Showing wizard end-to-end; APScheduler
-  triggers; runtime computation + rounding.
+  media scan; ticket ESC/POS rendering (print to file/mock). ✅ **Done**
+  (also: New Showing wizard, APScheduler triggers, runtime rounding, and the
+  `deploy/install.sh` TUI installer landed alongside Phase 1.)
+- **Phase 2 — Hardening:** Alembic migrations, auth (single shared login),
+  per-item playlist reordering UI, richer schedule conflict checks.
 - **Phase 3 — Real playback service:** host systemd service, ffmpeg+NVDEC+DeckLink,
   shuttle controls wired to real hardware.
 - **Phase 4 — HDR10 signaling + printer hardware + sync validation.**

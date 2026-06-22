@@ -1,0 +1,91 @@
+import { useEffect, useState } from "react";
+import { api } from "../api.js";
+
+export default function Media() {
+  const [media, setMedia] = useState([]);
+  const [error, setError] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = () => api.listMedia().then(setMedia).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  async function scan() {
+    setScanning(true);
+    setMsg("");
+    setError("");
+    try {
+      const r = await api.scanMedia();
+      setMsg(`Scanned ${r.scanned} files · ${r.added} added · ${r.updated} updated`);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function setKind(m, kind) {
+    await api.tagMedia(m.id, { kind });
+    load();
+  }
+
+  return (
+    <>
+      <div className="spread" style={{ marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Media Library</h2>
+        <button className="btn" disabled={scanning} onClick={scan}>
+          {scanning ? "Scanning…" : "Scan library"}
+        </button>
+      </div>
+      {msg && <p className="ok">{msg}</p>}
+      {error && <p className="error">{error}</p>}
+
+      <div className="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Duration</th>
+              <th>Resolution</th>
+              <th>Codec</th>
+              <th>HDR</th>
+              <th>Audio</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {media.map((m) => (
+              <tr key={m.id}>
+                <td>
+                  <b>{m.title}</b>
+                  <div className="muted" style={{ fontSize: 12 }}>{m.path}</div>
+                </td>
+                <td><span className={`badge ${m.kind}`}>{m.kind}</span></td>
+                <td>{Math.round(m.duration_seconds / 60)} min</td>
+                <td>{m.width}×{m.height}</td>
+                <td>{m.video_codec}</td>
+                <td>{m.is_hdr10 ? <span className="badge hdr">HDR10</span> : <span className="muted">SDR</span>}</td>
+                <td className="muted">{m.audio_summary}</td>
+                <td>
+                  <div className="row">
+                    <button
+                      className="btn secondary"
+                      onClick={() => setKind(m, m.kind === "feature" ? "trailer" : "feature")}
+                    >
+                      Tag as {m.kind === "feature" ? "trailer" : "feature"}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {media.length === 0 && (
+              <tr><td colSpan="8" className="muted">No media. Click "Scan library".</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
