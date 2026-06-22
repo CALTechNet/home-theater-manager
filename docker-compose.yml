@@ -1,0 +1,42 @@
+# Home Theater Manager — management plane.
+#
+# Phase 1 runs the web UI, API, DB, and a MOCK playback service. The real
+# host-side playback service (GPU + DeckLink) is added in Phase 3 and replaces
+# the `playback` service here by pointing HTM_PLAYBACK_URL at the host.
+#
+# Configuration is driven by a .env file (see .env.example).
+
+services:
+  frontend:
+    build: ./frontend
+    image: htm-frontend
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    image: htm-backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - htm-data:/data
+      - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
+      # Hardware discovery results (deploy/discover.sh) shown in the Settings tab.
+      - ./runtime:/runtime:ro
+    # Backend is reached only through Caddy; no host port needed.
+    expose:
+      - "8000"
+
+  # MOCK playback service (Phase 1). Remove/replace in Phase 3.
+  playback:
+    build: ./playback-mock
+    image: htm-playback-mock
+    restart: unless-stopped
+    expose:
+      - "9000"
+
+volumes:
+  htm-data:
