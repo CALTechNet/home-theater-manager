@@ -45,7 +45,7 @@ die()  { printf '%s xx %s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 
 # A TTY for interactive prompts even when the script is piped from curl.
 TTY="/dev/tty"
-have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ]; }
+have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
 
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
@@ -178,7 +178,17 @@ install_htm_command() {
 # ---------------------------------------------------------------------------
 # TUI wizard (whiptail). Falls back to plain prompts without a TTY.
 # ---------------------------------------------------------------------------
-wt() { whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>&2 2>&3 < "$TTY" > "$TTY"; }
+wt() {
+  # Keep whiptail's UI attached to the real terminal while still capturing
+  # form/menu answers in command substitutions. Redirection order matters:
+  # whiptail/newt writes the screen to stdout and answers to stderr, so stdout
+  # must be sent directly to /dev/tty before stderr is swapped to the caller's
+  # stdout. The previous generic fd swap could leave the UI side attached to a
+  # pipe when install.sh was launched through curl/sudo, which made OK buttons
+  # ignore Enter on some first-install consoles.
+  whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+}
+
 
 run_tui() {
   if [ "$USE_TUI" -eq 0 ] || ! have_tty || ! command -v whiptail >/dev/null 2>&1; then
@@ -186,17 +196,13 @@ run_tui() {
     return
   fi
 
-  wt --title "Welcome" --msgbox \
-    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nPress OK to begin." 14 64
-
-  # Surface what auto-discovery found so the operator can confirm hardware.
+  local intro="This wizard configures your Home Theater Manager."
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
-    wt --title "Detected hardware" --msgbox \
-      "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66
+    intro="$intro\n\nDetected hardware:\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any time with: sudo htm"
   fi
 
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
-    "Name printed on tickets and shown in the UI:" 10 64 "$HTM_THEATER_NAME")"
+    "$intro\n\nName printed on tickets and shown in the UI:" 18 72 "$HTM_THEATER_NAME")"
 
   HTM_MEDIA_HOST_PATH="$(wt --title "Media location" --inputbox \
     "Host path to your movies/trailers (your NFS/SMB mount).\nMounted read-only into the app." 11 64 "$HTM_MEDIA_HOST_PATH")"
