@@ -139,10 +139,40 @@ run_discovery() {
   fi
 }
 
+# Offer to install the Blackmagic DeckLink driver when a card is detected but no
+# driver is loaded. Blackmagic has no public repo, so we ask for the package.
+maybe_install_decklink() {
+  [ "${HTM_HAS_DECKLINK:-false}" = "true" ] || return 0
+  if lsmod 2>/dev/null | grep -qi blackmagic || ls /dev/blackmagic* >/dev/null 2>&1; then
+    ok "DeckLink driver already loaded; skipping driver install."
+    return 0
+  fi
+  if [ "$USE_TUI" -eq 0 ] || ! have_tty; then
+    # Non-interactive: only proceed if a source was provided via env.
+    [ -n "${HTM_DECKLINK_SRC:-}${HTM_DECKLINK_DOWNLOAD_UUID:-}" ] || {
+      warn "DeckLink detected but no driver/source; set HTM_DECKLINK_SRC to install. Skipping."
+      return 0
+    }
+    bash "$INSTALL_DIR/deploy/install-decklink.sh" || warn "DeckLink install had issues."
+    return 0
+  fi
+
+  wt --title "Blackmagic DeckLink" --yesno \
+    "A DeckLink card was detected but no driver is loaded.\n\nBlackmagic Desktop Video has no public repo, so you must supply the\npackage (download it from blackmagicdesign.com/support).\n\nInstall the SDI driver now?" 16 70 || return 0
+
+  HTM_DECKLINK_SRC="$(wt --title "DeckLink package source" --inputbox \
+    "Path or URL to the Desktop Video package (.tar.gz / .deb / .rpm).\nLeave blank to skip." 12 70 "${HTM_DECKLINK_SRC:-}")" || return 0
+  [ -n "$HTM_DECKLINK_SRC" ] || { warn "No source given; skipping DeckLink driver."; return 0; }
+
+  export HTM_DECKLINK_SRC
+  bash "$INSTALL_DIR/deploy/install-decklink.sh" || warn "DeckLink install had issues; see output above."
+}
+
 # Install a global `htm` command pointing at the management menu.
 install_htm_command() {
   ln -sf "$INSTALL_DIR/deploy/htm-menu.sh" /usr/local/bin/htm
-  chmod +x "$INSTALL_DIR/deploy/htm-menu.sh" "$INSTALL_DIR/deploy/discover.sh" 2>/dev/null || true
+  chmod +x "$INSTALL_DIR/deploy/htm-menu.sh" "$INSTALL_DIR/deploy/discover.sh" \
+    "$INSTALL_DIR/deploy/install-decklink.sh" 2>/dev/null || true
   ok "Installed 'htm' management command (run: sudo htm)."
 }
 
@@ -262,6 +292,7 @@ main() {
   run_discovery
   install_htm_command
   run_tui
+  maybe_install_decklink
   write_env
   deploy
   print_done

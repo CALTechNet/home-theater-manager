@@ -21,6 +21,7 @@ change, update this doc in the same PR.
 | PDF tickets (80mm receipt + 8.5×11 color) | **Implemented (Phase 1)** |
 | TUI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
 | Hardware auto-discovery (NVIDIA/AMD/Intel + iGPU, DeckLink, printer, audio) | **Implemented** |
+| Blackmagic DeckLink driver installer (DKMS) | **Implemented** |
 | `htm` management TUI (re-discover, reconfigure, logs, update) | **Implemented** |
 | Real host playback service (multi-vendor decode + DeckLink) | Designed, not built (Phase 3) |
 | HDR10 SDI signaling | Designed (Phase 4) |
@@ -34,6 +35,7 @@ backend/        FastAPI app: routers/ (media, showings, tickets, playback,
 frontend/       React + Vite SPA (tabs/ + components/), Caddy (TLS :443 + /api)
 playback-mock/  FastAPI mock of the control API (§6) with a simulated clock
 deploy/         install.sh (curl|bash installer), discover.sh (hardware probe),
+                install-decklink.sh (Blackmagic DKMS driver),
                 htm-menu.sh (management TUI, installed as `htm`)
 runtime/        hardware discovery output (gitignored), mounted at /runtime
 docker-compose.yml, .env.example
@@ -337,11 +339,25 @@ tab's "Detected hardware" panel via `/runtime/hardware.json`.
 - **AMD / Intel (incl. integrated):** pass `/dev/dri` for VAAPI; AMD ROCm adds
   `/dev/kfd`. The discovered `HTM_HWACCEL` hint selects the ffmpeg decode path.
 
-### 9.1 Host prerequisites for Phase 3 (real playback; scripted later)
-- NVIDIA driver + NVIDIA Container Toolkit.
-- Blackmagic **Desktop Video** driver.
+### 9.0.3 DeckLink driver install (`deploy/install-decklink.sh`)
+Blackmagic provides **no public apt/dnf repo or stable download URL** — Desktop
+Video is behind a registration-gated portal whose download UUID changes per
+release. The installer therefore:
+- runs when discovery finds a DeckLink but no loaded driver (TUI prompts; also in
+  `htm` and runnable standalone),
+- takes the package from an operator-supplied **local path or URL**
+  (`HTM_DECKLINK_SRC`); zero-touch download is opt-in via
+  `HTM_DECKLINK_DOWNLOAD_UUID` (best-effort against Blackmagic's gated API),
+- installs DKMS + kernel headers, installs the core (non-GUI) `desktopvideo`
+  package for the distro/arch, builds the kernel module, loads it, and verifies
+  `/dev/blackmagic*`. A reboot may be required to build against the running kernel.
+
+### 9.1 Host prerequisites for Phase 3 (real playback)
+- GPU driver: NVIDIA driver + Container Toolkit, **or** AMD/Intel VAAPI via
+  `/dev/dri` (AMD ROCm adds `/dev/kfd`). Selected per discovered `HTM_HWACCEL`.
+- Blackmagic **Desktop Video** driver — installable via `install-decklink.sh`.
 - NFS/SMB mount of remote media at `/mnt/media`.
-- Epson printer reachable (USB device or network IP).
+- A printer reachable from the operator's workstation (tickets are client-printed PDFs).
 
 ### 9.2 Docker Compose (management plane)
 - `caddy` (:443), `frontend` (build artifact), `backend` (FastAPI),

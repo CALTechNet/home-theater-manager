@@ -40,6 +40,16 @@ show_hardware() {
   fi
 }
 
+install_decklink() {
+  local src
+  src="$(wt --title "DeckLink driver" --inputbox \
+    "Path or URL to the Blackmagic Desktop Video package (.tar.gz/.deb/.rpm),\ndownloaded from blackmagicdesign.com/support. Leave blank to auto-detect\nonly (will skip if no source)." 13 70 "${HTM_DECKLINK_SRC:-}")" || return
+  clear
+  echo "Installing DeckLink driver (this may take a few minutes)..."
+  HTM_DECKLINK_SRC="$src" bash "$SCRIPT_DIR/install-decklink.sh" --force || true
+  echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"
+}
+
 reconfigure_ticket_style() {
   local style
   style="$(wt --title "Default ticket style" --menu \
@@ -67,6 +77,7 @@ main_menu() {
     choice="$(wt --title "Main menu" --menu "Install: $INSTALL_DIR" 20 70 10 \
       discover  "Re-discover hardware (GPU/DeckLink/printer/audio)" \
       hardware  "Show detected hardware" \
+      decklink  "Install / update Blackmagic DeckLink driver" \
       tickets   "Set default ticket style (receipt / full-page)" \
       status    "Show stack status" \
       logs      "Tail logs" \
@@ -79,6 +90,7 @@ main_menu() {
     case "$choice" in
       discover) rediscover ;;
       hardware) show_hardware ;;
+      decklink) install_decklink ;;
       tickets)  reconfigure_ticket_style ;;
       status)   pause "Status" "$(dc ps 2>&1)" ;;
       logs)     clear; echo "Ctrl-C to return to menu."; dc logs -f --tail 100 || true ;;

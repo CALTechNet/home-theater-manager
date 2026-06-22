@@ -136,7 +136,34 @@ sudo htm
 ```
 
 Menu options: **re-discover hardware** (after swapping a GPU/DeckLink/printer),
-set default ticket style, status, logs, start/stop/restart, and update.
+install the DeckLink driver, set default ticket style, status, logs,
+start/stop/restart, and update.
+
+### Blackmagic DeckLink (SDI) driver
+
+Blackmagic offers **no public apt/dnf repo or stable download link** — Desktop
+Video is behind a registration-gated portal. So the installer can't silently
+"pull the latest"; instead it installs the driver from a package **you supply**.
+
+1. Download "Desktop Video" for Linux from
+   [blackmagicdesign.com/support](https://www.blackmagicdesign.com/support)
+   (the `.tar.gz`, or a `.deb`/`.rpm`).
+2. Make it reachable as a local path or LAN URL, then:
+
+```bash
+# during install (TUI will also prompt if a card is detected):
+sudo HTM_DECKLINK_SRC=/root/Desktop_Video_Linux_14.4.tar.gz bash deploy/install.sh
+
+# or any time afterwards:
+sudo HTM_DECKLINK_SRC=https://nas.lan/desktopvideo.tar.gz htm   # → "Install DeckLink driver"
+# or directly:
+sudo HTM_DECKLINK_SRC=/path/to/pkg.tar.gz bash deploy/install-decklink.sh --force
+```
+
+It installs DKMS + kernel headers, builds and loads the kernel module, and
+verifies `/dev/blackmagic*`. **A reboot may be needed** so DKMS can build against
+the running kernel. (Advanced: set `HTM_DECKLINK_DOWNLOAD_UUID` to the per-release
+UUID from Blackmagic's page for a best-effort automatic download.)
 
 ### TLS
 
