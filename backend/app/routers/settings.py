@@ -37,11 +37,58 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
     return row
 
 
+def _reserved_connectors() -> list[str]:
+    """Connectors the host console claimed (deploy/console-routing.sh)."""
+    path = Path(app_settings.console_file)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+        return [str(c) for c in data.get("reserved_connectors", [])]
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _connector_matches_output(connector: str, dev: dict) -> bool:
+    """Best-effort match between a DRM connector name (e.g. HDMI-A-1) and a
+    playback output device. Output IDs are not yet 1:1 with DRM names (mock /
+    pre-Phase-3), so we match on the device 'type' family by connector prefix.
+    Advisory only — drives a warning, never a hard block.
+    """
+    fam = connector.split("-", 1)[0].lower()  # HDMI-A-1 -> hdmi, DP-1 -> dp
+    aliases = {
+        "hdmi": {"hdmi"},
+        "dp": {"displayport", "dp"},
+        "vga": {"vga", "analog"},
+        "edp": {"edp", "hdmi", "displayport"},
+    }.get(fam, {fam})
+    return dev.get("type", "").lower() in aliases
+
+
+def _annotate_reserved(outputs: dict) -> dict:
+    reserved = _reserved_connectors()
+    if not reserved:
+        return outputs
+    for dev in outputs.get("video", []):
+        hits = [c for c in reserved if _connector_matches_output(c, dev)]
+        if hits:
+            dev["reserved"] = True
+            dev["reserved_reason"] = (
+                f"Reserved for the host console ({', '.join(hits)}). "
+                "Selecting it may conflict with local admin access."
+            )
+    return outputs
+
+
 @router.get("/outputs", response_model=OutputsOut)
 def list_outputs():
-    """Discover available outputs from the playback service (SDI + GPU + audio)."""
+    """Discover available outputs from the playback service (SDI + GPU + audio).
+
+    Video outputs are annotated `reserved` when deploy/console-routing.sh has
+    claimed the matching connector for the host's Linux text console.
+    """
     try:
-        return playback_client.outputs()
+        return _annotate_reserved(playback_client.outputs())
     except PlaybackUnavailable as e:
         raise HTTPException(503, f"playback service unavailable: {e}")
 

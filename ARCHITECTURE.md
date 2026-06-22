@@ -260,6 +260,36 @@ feed (e.g. DeckLink SDI **and** a GPU HDMI output). The playback service
 enumerates available outputs via `GET /outputs` (DeckLink SDK + GPU in Phase 3;
 a fixed list in the mock).
 
+#### Console vs. video output routing (host level)
+
+Distinct from *playback* output selection above is the host's **Linux console**.
+Because this is a server OS, an operator may plug a monitor + keyboard into the
+box for local admin, and the text console must not collide with the projector
+feed. Two cases:
+
+- **DeckLink SDI playback** bypasses the GPU framebuffer entirely, so every GPU
+  connector stays free for the VGA console — no host config needed.
+- **A GPU HDMI/DP connector drives the projector.** That connector is disabled
+  from the kernel framebuffer console (`video=<conn>:d`) so `fbcon`/`getty` only
+  ever appear on the designated console output (e.g. onboard VGA). A serial
+  console (`console=ttyS0,115200`) can be added as a headless fallback.
+
+`deploy/console-routing.sh` enumerates DRM connectors (`/sys/class/drm`) and
+serial UARTs — also recorded in `runtime/hardware.json` (`connectors`, `serial`)
+by `discover.sh` — and writes the kernel command line via a GRUB drop-in
+(`/etc/default/grub.d/99-htm-console.cfg` on Debian/Ubuntu) or a managed
+`GRUB_CMDLINE_LINUX` block + `grubby` on RHEL/Rocky. It previews by default and
+only mutates GRUB with `--apply`; `sudo htm` exposes it interactively.
+
+On `--apply` it also writes the reserved connectors to `runtime/console.json`.
+`GET /api/settings/outputs` reads that file and annotates any playback video
+output whose connector matches (`reserved`, `reserved_reason`); the Settings tab
+badges it *console-reserved* and warns on selection. The match is by connector
+*family* (HDMI/DP/VGA) because pre-Phase-3 the mock output IDs are not yet 1:1
+with DRM connector names — hence **advisory (warn), not a hard block**. When the
+Phase 3 playback service enumerates GPU outputs via DRM, output IDs become the
+connector names and this collapses to an exact, enforceable match.
+
 ### 6.2 Shuttle button mapping (Now Showing tab)
 - **Start Show** → `load` (if needed) + `start`
 - **Play / Pause** → `resume` / `pause`

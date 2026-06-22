@@ -75,6 +75,38 @@ discover_gpus() {
 }
 
 # ---------------------------------------------------------------------------
+# Display connectors (DRM) + serial ports — for console/video output routing.
+# See deploy/console-routing.sh. The connector name (e.g. HDMI-A-1) is exactly
+# what the kernel 'video=' parameter expects.
+# ---------------------------------------------------------------------------
+connector_objs=()
+serial_objs=()
+discover_outputs() {
+  local d name status
+  for d in /sys/class/drm/card*-*/; do
+    [ -e "$d/status" ] || continue
+    name="$(basename "$d")"; name="${name#card*-}"
+    status="$(cat "$d/status" 2>/dev/null || echo unknown)"
+    connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\"}")
+    say "  Connector: $name ($status)"
+  done
+  [ ${#connector_objs[@]} -eq 0 ] && say "  No DRM display connectors enumerated." || true
+
+  if [ -r /proc/tty/driver/serial ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        [0-9]*:\ uart:*)
+          echo "$line" | grep -q 'uart:unknown' && continue
+          local port="ttyS${line%%:*}"
+          serial_objs+=("{\"port\":\"$port\"}")
+          say "  Serial: $port" ;;
+      esac
+    done < /proc/tty/driver/serial
+  fi
+  [ ${#serial_objs[@]} -eq 0 ] && say "  No usable serial UART detected." || true
+}
+
+# ---------------------------------------------------------------------------
 # Blackmagic DeckLink (SDI)
 # ---------------------------------------------------------------------------
 decklink_objs=()
@@ -142,6 +174,7 @@ join_objs() { local IFS=,; echo "$*"; }
 main() {
   say "Discovering hardware..."
   say "GPUs:";     discover_gpus
+  say "Outputs:";  discover_outputs
   say "Capture:";  discover_decklink
   say "Printers:"; discover_printers
   say "Audio:";    discover_audio
@@ -156,6 +189,8 @@ main() {
   "primary_hwaccel": "$(json_escape "$primary_hwaccel")",
   "has_decklink": $has_decklink,
   "gpus": [ $(join_objs "${gpu_objs[@]:-}") ],
+  "connectors": [ $(join_objs "${connector_objs[@]:-}") ],
+  "serial": [ $(join_objs "${serial_objs[@]:-}") ],
   "decklink": [ $(join_objs "${decklink_objs[@]:-}") ],
   "printers": [ $(join_objs "${printer_objs[@]:-}") ],
   "audio": [ $(join_objs "${audio_objs[@]:-}") ]

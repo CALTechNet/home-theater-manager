@@ -50,6 +50,56 @@ install_decklink() {
   echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"
 }
 
+console_routing() {
+  # Build a connector picker from discovery (or live /sys), then preview/apply.
+  local conns=() name status line
+  while IFS=$'\t' read -r name status; do
+    [ -n "$name" ] || continue
+    conns+=("$name" "$status" "off")
+  done < <(
+    for d in /sys/class/drm/card*-*/; do
+      [ -e "$d/status" ] || continue
+      n="$(basename "$d")"; n="${n#card*-}"
+      printf '%s\t%s\n' "$n" "$(cat "$d/status" 2>/dev/null || echo unknown)"
+    done | sort -u
+  )
+
+  if [ ${#conns[@]} -eq 0 ]; then
+    if ! wt --title "Console / video routing" --yesno \
+      "No GPU display connectors were detected on this box.\n\nThat is normal for DeckLink-SDI playback: SDI never touches the\nLinux console, so the VGA console is already free.\n\nAdd a serial console (ttyS0) as a headless fallback?" 14 70; then
+      return
+    fi
+    clear; bash "$SCRIPT_DIR/console-routing.sh" --serial --apply
+    echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"; return
+  fi
+
+  local video
+  video="$(wt --title "Playback output" --radiolist \
+    "Pick the GPU connector that drives the PROJECTOR.\nIt will be kept clear of the Linux text console.\n(Space to select, Enter to confirm. Cancel if playback is DeckLink SDI.)" \
+    18 72 8 "${conns[@]}")" || video=""
+
+  local want_serial=0
+  wt --title "Serial console" --yesno \
+    "Also add a serial console (ttyS0,115200) as a headless\nrecovery fallback, in addition to the physical VGA console?" 10 70 && want_serial=1
+
+  local -a args=()
+  [ -n "$video" ] && args+=(--video-output "$video")
+  [ "$want_serial" -eq 1 ] && args+=(--serial)
+  if [ ${#args[@]} -eq 0 ]; then
+    pause "Console / video routing" "Nothing selected — no changes made."
+    return
+  fi
+
+  local preview
+  preview="$(bash "$SCRIPT_DIR/console-routing.sh" "${args[@]}" 2>&1)"
+  if wt --title "Apply console routing?" --yesno \
+    "$preview\n\nApply now? (writes a GRUB drop-in; takes effect after reboot)" 22 76; then
+    clear
+    bash "$SCRIPT_DIR/console-routing.sh" "${args[@]}" --apply
+    echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"
+  fi
+}
+
 reconfigure_ticket_style() {
   local style
   style="$(wt --title "Default ticket style" --menu \
@@ -77,6 +127,7 @@ main_menu() {
     choice="$(wt --title "Main menu" --menu "Install: $INSTALL_DIR" 20 70 10 \
       discover  "Re-discover hardware (GPU/DeckLink/printer/audio)" \
       hardware  "Show detected hardware" \
+      console   "Console / video output routing (VGA console + serial)" \
       decklink  "Install / update Blackmagic DeckLink driver" \
       tickets   "Set default ticket style (receipt / full-page)" \
       status    "Show stack status" \
@@ -90,6 +141,7 @@ main_menu() {
     case "$choice" in
       discover) rediscover ;;
       hardware) show_hardware ;;
+      console)  console_routing ;;
       decklink) install_decklink ;;
       tickets)  reconfigure_ticket_style ;;
       status)   pause "Status" "$(dc ps 2>&1)" ;;

@@ -136,8 +136,45 @@ sudo htm
 ```
 
 Menu options: **re-discover hardware** (after swapping a GPU/DeckLink/printer),
-install the DeckLink driver, set default ticket style, status, logs,
-start/stop/restart, and update.
+**console / video output routing**, install the DeckLink driver, set default
+ticket style, status, logs, start/stop/restart, and update.
+
+### Console vs. video output routing (VGA console access)
+
+This is a server OS, so you'll often want to plug a monitor + keyboard into the
+box for local admin. The trick is keeping the Linux **text console** off the
+output that drives the **projector**:
+
+- **DeckLink SDI playback** — nothing to do. SDI never touches the framebuffer,
+  so every GPU connector is already free for the VGA console.
+- **A GPU HDMI/DP connector drives the projector** — dedicate that connector to
+  playback and keep the text console on another (e.g. the onboard VGA). The
+  `console` entry in `sudo htm`, or `deploy/console-routing.sh` directly, writes
+  a GRUB drop-in that disables the playback connector from the kernel console
+  (`video=<conn>:d`) and pins the console where you want it.
+
+```bash
+# see connectors + serial ports, change nothing:
+sudo bash deploy/console-routing.sh --list
+
+# GPU HDMI drives the projector; keep the VGA text console; commit + reboot:
+sudo bash deploy/console-routing.sh --video-output HDMI-A-1 --console-output VGA-1 --apply
+
+# add a serial console (ttyS0) as a headless recovery fallback:
+sudo bash deploy/console-routing.sh --video-output HDMI-A-1 --serial --apply
+
+# undo HTM-managed console config:
+sudo bash deploy/console-routing.sh --revert --apply
+```
+
+Without `--apply` the script only **previews** the kernel command line; nothing
+is written. Changes take effect on the next reboot. Connector names come from
+discovery (`runtime/hardware.json` → `connectors` / `serial`).
+
+Applying also records the reservation to `runtime/console.json`, which the
+**Settings tab** reads: a playback video output whose connector is claimed by
+the console is badged *console-reserved* and warns if you select it (advisory —
+it doesn't block, since output IDs become 1:1 with connector names in Phase 3).
 
 ### Blackmagic DeckLink (SDI) driver
 
@@ -221,7 +258,8 @@ npm run dev                                          # http://localhost:5173
 backend/        FastAPI app (API, scheduler, media scan, PDF tickets, migrations)
 frontend/       React + Vite SPA, served by Caddy (TLS :443 + /api proxy)
 playback-mock/  Stand-in playback control service (Phase 1)
-deploy/         install.sh (installer), discover.sh (hardware), htm-menu.sh (TUI)
+deploy/         install.sh (installer), discover.sh (hardware), htm-menu.sh (TUI),
+                console-routing.sh (VGA console vs. projector output / serial console)
 runtime/        hardware discovery output (gitignored)
 docker-compose.yml
 ARCHITECTURE.md Design of record

@@ -271,7 +271,12 @@ ${c_grn}Home Theater Manager is running.${c_off}
 
   Config: $INSTALL_DIR/.env   (re-run installer or edit, then 'docker compose up -d')
 
-  Manage: sudo htm   (TUI: re-discover hardware, reconfigure, logs, update)
+  Manage: sudo htm   (TUI: re-discover hardware, console/video routing, logs, update)
+
+Console: this is a server OS. If a GPU connector drives the projector, route the
+VGA text console to a different output (and optionally add a serial console):
+  sudo bash $INSTALL_DIR/deploy/console-routing.sh --list
+DeckLink SDI playback needs nothing here — SDI leaves the VGA console free.
 
 Printing: tickets print from the workstation/browser — pick any printer it can
 reach (network, USB, thermal, or a normal 8.5x11 color printer) in the print

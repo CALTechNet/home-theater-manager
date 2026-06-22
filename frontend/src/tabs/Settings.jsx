@@ -58,19 +58,43 @@ export default function Settings() {
             playback to both.
           </p>
           {outputs.video.length === 0 && <p className="muted">No video outputs detected.</p>}
-          {outputs.video.map((o) => (
-            <label key={o.id} className="card row" style={{ cursor: "pointer", marginBottom: 8 }}>
-              <input
-                type="checkbox"
-                checked={videoIds.includes(o.id)}
-                onChange={() => toggleVideo(o.id)}
-              />
-              <span style={{ flex: 1 }}>
-                {o.name}
-                {typeBadge(o.type)}
-              </span>
-            </label>
-          ))}
+          {outputs.video.map((o) => {
+            const checked = videoIds.includes(o.id);
+            const warn = o.reserved && checked;
+            return (
+              <label
+                key={o.id}
+                className="card row"
+                style={{ cursor: "pointer", marginBottom: 8, opacity: o.reserved ? 0.7 : 1 }}
+                title={o.reserved_reason || ""}
+              >
+                <input type="checkbox" checked={checked} onChange={() => toggleVideo(o.id)} />
+                <span style={{ flex: 1 }}>
+                  {o.name}
+                  {typeBadge(o.type)}
+                  {o.reserved && (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        fontSize: "0.75em",
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        background: warn ? "#7a2e2e" : "#5a4a1a",
+                        color: "#fff",
+                      }}
+                    >
+                      console-reserved
+                    </span>
+                  )}
+                  {warn && (
+                    <div className="muted" style={{ color: "#e0a500", marginTop: 4 }}>
+                      ⚠ {o.reserved_reason}
+                    </div>
+                  )}
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         <div className="card" style={{ flex: 1 }}>
