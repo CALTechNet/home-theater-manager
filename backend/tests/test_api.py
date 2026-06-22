@@ -146,3 +146,30 @@ def test_audio_format_detection():
 
     assert _aspect_ratio({"display_aspect_ratio": "0:1"}, 3840, 2160) == "16:9"
     assert _aspect_ratio({}, 3840, 1600) == "2.40:1"
+
+
+def test_console_reserved_annotation(monkeypatch):
+    """A connector reserved by the host console flags only the matching GPU
+    output family; SDI and unrelated connectors are left selectable."""
+    from app.routers import settings as s
+
+    monkeypatch.setattr(s, "_reserved_connectors", lambda: ["HDMI-A-1"])
+    out = s._annotate_reserved({
+        "video": [
+            {"id": "decklink:0", "name": "SDI", "type": "sdi"},
+            {"id": "gpu:hdmi-0", "name": "HDMI", "type": "hdmi"},
+            {"id": "gpu:dp-0", "name": "DP", "type": "displayport"},
+        ],
+        "audio": [],
+    })
+    by_id = {d["id"]: d for d in out["video"]}
+    assert by_id["gpu:hdmi-0"]["reserved"] is True
+    assert "HDMI-A-1" in by_id["gpu:hdmi-0"]["reserved_reason"]
+    assert by_id["decklink:0"].get("reserved", False) is False
+    assert by_id["gpu:dp-0"].get("reserved", False) is False
+
+    # No reservation file -> nothing annotated.
+    monkeypatch.setattr(s, "_reserved_connectors", lambda: [])
+    clean = s._annotate_reserved({"video": [{"id": "gpu:hdmi-0", "name": "HDMI",
+                                             "type": "hdmi"}], "audio": []})
+    assert clean["video"][0].get("reserved", False) is False

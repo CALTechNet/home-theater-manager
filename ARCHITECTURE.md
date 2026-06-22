@@ -281,6 +281,15 @@ by `discover.sh` — and writes the kernel command line via a GRUB drop-in
 `GRUB_CMDLINE_LINUX` block + `grubby` on RHEL/Rocky. It previews by default and
 only mutates GRUB with `--apply`; `sudo htm` exposes it interactively.
 
+On `--apply` it also writes the reserved connectors to `runtime/console.json`.
+`GET /api/settings/outputs` reads that file and annotates any playback video
+output whose connector matches (`reserved`, `reserved_reason`); the Settings tab
+badges it *console-reserved* and warns on selection. The match is by connector
+*family* (HDMI/DP/VGA) because pre-Phase-3 the mock output IDs are not yet 1:1
+with DRM connector names — hence **advisory (warn), not a hard block**. When the
+Phase 3 playback service enumerates GPU outputs via DRM, output IDs become the
+connector names and this collapses to an exact, enforceable match.
+
 ### 6.2 Shuttle button mapping (Now Showing tab)
 - **Start Show** → `load` (if needed) + `start`
 - **Play / Pause** → `resume` / `pause`

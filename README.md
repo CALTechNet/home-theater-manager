@@ -171,6 +171,11 @@ Without `--apply` the script only **previews** the kernel command line; nothing
 is written. Changes take effect on the next reboot. Connector names come from
 discovery (`runtime/hardware.json` → `connectors` / `serial`).
 
+Applying also records the reservation to `runtime/console.json`, which the
+**Settings tab** reads: a playback video output whose connector is claimed by
+the console is badged *console-reserved* and warns if you select it (advisory —
+it doesn't block, since output IDs become 1:1 with connector names in Phase 3).
+
 ### Blackmagic DeckLink (SDI) driver
 
 When a DeckLink is detected, the installer offers to install the driver. It

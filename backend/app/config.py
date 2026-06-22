@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Hardware hints from deploy/discover.sh (informational; used by Phase 3).
     hardware_file: str = "/runtime/hardware.json"
 
+    # Connectors reserved for the host's Linux console by deploy/console-routing.sh.
+    # Used to warn when a playback video output collides with the text console.
+    console_file: str = "/runtime/console.json"
+
     # Seat grid extents (rows A..max_row, seats 1..max_seat).
     seat_max_row: str = "F"
     seat_max_number: int = 6

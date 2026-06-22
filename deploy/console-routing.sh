@@ -37,6 +37,11 @@ set -euo pipefail
 MARKER="Home Theater Manager console-routing"
 DEB_DROPIN="/etc/default/grub.d/99-htm-console.cfg"
 GRUB_DEFAULT="/etc/default/grub"
+# Where we record the reservation so the backend/web UI can warn that a
+# connector is claimed by the Linux console. Lives next to hardware.json.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="${HTM_RUNTIME_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)/runtime}"
+CONSOLE_STATE="$RUNTIME_DIR/console.json"
 
 c_grn=$'\e[32m'; c_yel=$'\e[33m'; c_red=$'\e[31m'; c_off=$'\e[0m'
 [ -t 1 ] || { c_grn=""; c_yel=""; c_red=""; c_off=""; }
@@ -215,7 +220,30 @@ revert_config() {
     # Best-effort: strip our token classes from live entries.
     grubby --update-kernel=ALL --remove-args="console=tty0 console=ttyS0,115200n8" 2>/dev/null || true
   fi
+  if [ -e "$CONSOLE_STATE" ]; then
+    rm -f "$CONSOLE_STATE"; ok "Removed reservation record $CONSOLE_STATE"; changed=1
+  fi
   [ "$changed" -eq 1 ] || warn "No HTM-managed console config found."
+}
+
+# Record which connectors are claimed by the console so the web UI can warn
+# when a reserved connector is also picked as a playback video output.
+write_console_state() {
+  mkdir -p "$RUNTIME_DIR" 2>/dev/null || { warn "Could not create $RUNTIME_DIR; skipping reservation record."; return 0; }
+  local items="" v
+  for v in "${VIDEO_OUTS[@]:-}"; do
+    [ -n "$v" ] || continue
+    items="$items${items:+,}\"$v\""
+  done
+  {
+    printf '{\n'
+    printf '  "reserved_connectors": [%s],\n' "$items"
+    printf '  "console_output": %s,\n' "$( [ -n "$CONSOLE_OUT" ] && printf '"%s"' "$CONSOLE_OUT" || printf 'null' )"
+    printf '  "serial": %s,\n' "$( [ -n "$SERIAL" ] && printf '"%s"' "$SERIAL" || printf 'null' )"
+    printf '  "physical_console": %s\n' "$( [ "$PHYSICAL" -eq 1 ] && echo true || echo false )"
+    printf '}\n'
+  } > "$CONSOLE_STATE"
+  ok "Recorded console reservation -> $CONSOLE_STATE"
 }
 
 apply_config() {
@@ -227,6 +255,7 @@ apply_config() {
     write_rhel_cmdline "$params"
   fi
   regenerate_grub
+  write_console_state
   ok "Console routing applied. Reboot for the new console/video layout to take effect."
 }
 
