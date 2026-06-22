@@ -180,11 +180,10 @@ install_htm_command() {
 # ---------------------------------------------------------------------------
 wt() {
   # Keep whiptail's UI attached to the real terminal while still capturing
-  # form/menu answers in command substitutions. Redirection order matters:
-  # whiptail/newt draws on stdout and emits answers on stderr.
+
+
   whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
 }
-
 
 run_tui() {
   if [ "$USE_TUI" -eq 0 ] || ! have_tty || ! command -v whiptail >/dev/null 2>&1; then
