@@ -21,8 +21,8 @@ curl -fsSL https://raw.githubusercontent.com/CALTechNet/home-theater-manager/mai
 ```
 
 The wizard (whiptail TUI) asks for your theater name, media location, seat grid,
-and printer, then builds and launches the stack. When it finishes it prints the
-URL:
+and default ticket style, then builds and launches the stack. When it finishes
+it prints the URL:
 
 ```
 https://<server-ip>/
