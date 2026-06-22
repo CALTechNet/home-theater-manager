@@ -15,8 +15,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TTY="/dev/tty"
 
-have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ]; }
-wt() { whiptail --backtitle "Home Theater Manager" "$@" 3>&1 1>&2 2>&3 < "$TTY" > "$TTY"; }
+have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
+wt() {
+  # Keep the menu UI on /dev/tty while returning menu/form answers to callers.
+  # See deploy/install.sh for details on why this redirection order is
+  # important for Enter/OK handling when invoked from non-standard stdio.
+  whiptail --backtitle "Home Theater Manager" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+}
 dc() { ( cd "$INSTALL_DIR" && docker compose "$@" ); }
 pause() { wt --title "$1" --msgbox "$2" 20 72; }
 
