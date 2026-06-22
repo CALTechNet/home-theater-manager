@@ -26,6 +26,8 @@ HTM_MEDIA_HOST_PATH="${HTM_MEDIA_HOST_PATH:-/mnt/media}"
 HTM_SEAT_MAX_ROW="${HTM_SEAT_MAX_ROW:-F}"
 HTM_SEAT_MAX_NUMBER="${HTM_SEAT_MAX_NUMBER:-6}"
 HTM_TICKET_STYLE="${HTM_TICKET_STYLE:-receipt}"
+HTM_DECKLINK_VERSION="${HTM_DECKLINK_VERSION:-16.0}"
+export HTM_DECKLINK_VERSION
 
 USE_TUI=1
 for arg in "$@"; do
@@ -148,21 +150,18 @@ maybe_install_decklink() {
     return 0
   fi
   if [ "$USE_TUI" -eq 0 ] || ! have_tty; then
-    # Non-interactive: only proceed if a source was provided via env.
-    [ -n "${HTM_DECKLINK_SRC:-}${HTM_DECKLINK_DOWNLOAD_UUID:-}" ] || {
-      warn "DeckLink detected but no driver/source; set HTM_DECKLINK_SRC to install. Skipping."
-      return 0
-    }
+    # Non-interactive: attempt install (script auto-tries the pinned CDN version
+    # and skips cleanly if it needs a signed token / source).
+    export HTM_DECKLINK_SRC="${HTM_DECKLINK_SRC:-}"
     bash "$INSTALL_DIR/deploy/install-decklink.sh" || warn "DeckLink install had issues."
     return 0
   fi
 
   wt --title "Blackmagic DeckLink" --yesno \
-    "A DeckLink card was detected but no driver is loaded.\n\nBlackmagic Desktop Video has no public repo, so you must supply the\npackage (download it from blackmagicdesign.com/support).\n\nInstall the SDI driver now?" 16 70 || return 0
+    "A DeckLink card was detected but no driver is loaded.\n\nThe installer will try Blackmagic's CDN for Desktop Video v${HTM_DECKLINK_VERSION:-16.0}\nautomatically. If that needs a signed token, you can paste a download\nlink from blackmagicdesign.com/support instead.\n\nInstall the SDI driver now?" 16 72 || return 0
 
   HTM_DECKLINK_SRC="$(wt --title "DeckLink package source" --inputbox \
-    "Path or URL to the Desktop Video package (.tar.gz / .deb / .rpm).\nLeave blank to skip." 12 70 "${HTM_DECKLINK_SRC:-}")" || return 0
-  [ -n "$HTM_DECKLINK_SRC" ] || { warn "No source given; skipping DeckLink driver."; return 0; }
+    "Leave BLANK to auto-download Desktop Video v${HTM_DECKLINK_VERSION:-16.0} from Blackmagic's CDN.\n\nOr paste a signed download link (ends with '?verify=...') / local path\nif the automatic download is refused." 13 72 "${HTM_DECKLINK_SRC:-}")" || return 0
 
   export HTM_DECKLINK_SRC
   bash "$INSTALL_DIR/deploy/install-decklink.sh" || warn "DeckLink install had issues; see output above."

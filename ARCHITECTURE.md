@@ -340,17 +340,20 @@ tab's "Detected hardware" panel via `/runtime/hardware.json`.
   `/dev/kfd`. The discovered `HTM_HWACCEL` hint selects the ffmpeg decode path.
 
 ### 9.0.3 DeckLink driver install (`deploy/install-decklink.sh`)
-Blackmagic provides **no public apt/dnf repo or stable download URL** — Desktop
-Video is behind a registration-gated portal whose download UUID changes per
-release. The installer therefore:
-- runs when discovery finds a DeckLink but no loaded driver (TUI prompts; also in
-  `htm` and runnable standalone),
-- takes the package from an operator-supplied **local path or URL**
-  (`HTM_DECKLINK_SRC`); zero-touch download is opt-in via
-  `HTM_DECKLINK_DOWNLOAD_UUID` (best-effort against Blackmagic's gated API),
-- installs DKMS + kernel headers, installs the core (non-GUI) `desktopvideo`
-  package for the distro/arch, builds the kernel module, loads it, and verifies
-  `/dev/blackmagic*`. A reboot may be required to build against the running kernel.
+The installer runs when discovery finds a DeckLink but no loaded driver (TUI
+prompts; also in `htm` and runnable standalone). It acquires the Desktop Video
+package by trying, in order:
+1. an explicit `HTM_DECKLINK_SRC` (local file, LAN URL, or signed `?verify=...` link),
+2. `HTM_DECKLINK_DOWNLOAD_UUID` (opt-in best-effort against Blackmagic's gated API),
+3. **Blackmagic's CDN path for a pinned version** (`HTM_DECKLINK_VERSION`, default
+   16.0): `https://swr.cloud.blackmagicdesign.com/DesktopVideo/v<VER>/Blackmagic_Desktop_Video_Linux_<VER>.tar.gz`.
+
+Blackmagic's CDN may enforce a **time-limited signed token**; when the tokenless
+path is refused the script skips with clear instructions to paste a signed link.
+It then installs DKMS + kernel headers, installs the core (non-GUI)
+`desktopvideo` package for the distro/arch, builds the kernel module, loads it,
+and verifies `/dev/blackmagic*`. A reboot may be required to build against the
+running kernel.
 
 ### 9.1 Host prerequisites for Phase 3 (real playback)
 - GPU driver: NVIDIA driver + Container Toolkit, **or** AMD/Intel VAAPI via

@@ -43,7 +43,7 @@ show_hardware() {
 install_decklink() {
   local src
   src="$(wt --title "DeckLink driver" --inputbox \
-    "Path or URL to the Blackmagic Desktop Video package (.tar.gz/.deb/.rpm),\ndownloaded from blackmagicdesign.com/support. Leave blank to auto-detect\nonly (will skip if no source)." 13 70 "${HTM_DECKLINK_SRC:-}")" || return
+    "Leave BLANK to auto-download Desktop Video from Blackmagic's CDN.\n\nOr paste a signed download link (ends with '?verify=...') from\nblackmagicdesign.com/support, or a local .tar.gz/.deb/.rpm path,\nif the automatic download is refused." 14 72 "${HTM_DECKLINK_SRC:-}")" || return
   clear
   echo "Installing DeckLink driver (this may take a few minutes)..."
   HTM_DECKLINK_SRC="$src" bash "$SCRIPT_DIR/install-decklink.sh" --force || true

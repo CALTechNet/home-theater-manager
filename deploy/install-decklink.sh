@@ -3,23 +3,28 @@
 # Blackmagic Desktop Video (DeckLink) driver installer.
 #
 # Installs the Desktop Video kernel module (via DKMS) so the DeckLink card can
-# output SDI. Blackmagic does NOT provide a public apt/dnf repo or a stable
-# direct download URL — the driver lives behind a registration-gated portal — so
-# you must point this script at the package, one of:
+# output SDI. By default it tries Blackmagic's CDN for a pinned version:
 #
-#   HTM_DECKLINK_SRC=/path/to/Desktop_Video_Linux_X.Y.tar.gz   (local file)
-#   HTM_DECKLINK_SRC=https://your-lan/desktopvideo.tar.gz       (URL: tar/deb/rpm)
+#   https://swr.cloud.blackmagicdesign.com/DesktopVideo/v<VER>/Blackmagic_Desktop_Video_Linux_<VER>.tar.gz
 #
-# Zero-touch (opt-in) auto-download from Blackmagic's gated API, if you supply
-# the per-release download UUID from their support page:
-#   HTM_DECKLINK_DOWNLOAD_UUID=<uuid>
+# That CDN may require a time-limited signed token (the "?verify=..." on links
+# from their site). If the tokenless path is refused, supply the package
+# yourself, one of:
+#
+#   HTM_DECKLINK_SRC=/path/to/Blackmagic_Desktop_Video_Linux_16.0.tar.gz  (file)
+#   HTM_DECKLINK_SRC='https://.../...tar.gz?verify=...'                    (signed URL)
+#   HTM_DECKLINK_VERSION=16.0                                             (pin version)
+#   HTM_DECKLINK_DOWNLOAD_UUID=<uuid>   (opt-in gated-API auto-resolve)
 #
 # Usage:
 #   sudo bash install-decklink.sh [--force] [--require]
 #     --force    install even if no DeckLink is detected
-#     --require  fail (non-zero) instead of skipping when no source is available
+#     --require  fail (non-zero) instead of skipping when no source works
 #
 set -euo pipefail
+
+# Pinned default Desktop Video version (override with HTM_DECKLINK_VERSION).
+DECKLINK_VERSION="${HTM_DECKLINK_VERSION:-16.0}"
 
 FORCE=0; REQUIRE=0
 for a in "$@"; do
@@ -65,7 +70,7 @@ install_prereqs() {
   log "Installing build prerequisites (dkms + kernel headers)..."
   if [ "$PKG" = "apt" ]; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
+    apt-get update -y || warn "apt update reported errors (continuing)."
     apt-get install -y dkms build-essential "linux-headers-$(uname -r)" curl tar \
       || apt-get install -y dkms build-essential linux-headers-generic curl tar
   else
@@ -96,29 +101,58 @@ resolve_gated_url() {
     2>/dev/null || true
 }
 
+cdn_url() {
+  local v="$DECKLINK_VERSION"
+  echo "https://swr.cloud.blackmagicdesign.com/DesktopVideo/v${v}/Blackmagic_Desktop_Video_Linux_${v}.tar.gz"
+}
+
+# Download $1 to a temp file, naming it by extension. Echo the path on success.
+try_download() {
+  local url="$1" out="$WORK/dl"
+  case "$url" in
+    *.deb*) out="$out.deb" ;;
+    *.rpm*) out="$out.rpm" ;;
+    *)      out="$out.tar.gz" ;;
+  esac
+  if curl -fSL --retry 2 --connect-timeout 20 "$url" -o "$out" 2>/dev/null; then
+    echo "$out"; return 0
+  fi
+  return 1
+}
+
 acquire() {
   local src="${HTM_DECKLINK_SRC:-}"
-  if [ -z "$src" ] && [ -n "${HTM_DECKLINK_DOWNLOAD_UUID:-}" ]; then
-    src="$(resolve_gated_url "$HTM_DECKLINK_DOWNLOAD_UUID")"
-    [ -n "$src" ] && log "Resolved download URL." || warn "Gated resolution returned nothing."
-  fi
-  [ -n "$src" ] || skip "No DeckLink package source. Set HTM_DECKLINK_SRC to a local path or URL of the Desktop Video package (download from blackmagicdesign.com/support)."
 
-  if [ -f "$src" ]; then
-    PKG_FILE="$src"
-    ok "Using local package: $src"
-  else
-    log "Downloading $src ..."
-    PKG_FILE="$WORK/download"
-    curl -fSL "$src" -o "$PKG_FILE" || die "Download failed."
-    # Name by content type for extension sniffing.
-    case "$src" in
-      *.deb) mv "$PKG_FILE" "$PKG_FILE.deb"; PKG_FILE="$PKG_FILE.deb" ;;
-      *.rpm) mv "$PKG_FILE" "$PKG_FILE.rpm"; PKG_FILE="$PKG_FILE.rpm" ;;
-      *)     mv "$PKG_FILE" "$PKG_FILE.tar.gz"; PKG_FILE="$PKG_FILE.tar.gz" ;;
-    esac
-    ok "Downloaded to $PKG_FILE"
+  # 1. Explicit local file wins.
+  if [ -n "$src" ] && [ -f "$src" ]; then
+    PKG_FILE="$src"; ok "Using local package: $src"; return 0
   fi
+
+  # 2. Build an ordered list of candidate URLs to try.
+  local -a candidates=()
+  [ -n "$src" ] && candidates+=("$src")                 # explicit (signed) URL
+  if [ -n "${HTM_DECKLINK_DOWNLOAD_UUID:-}" ]; then
+    local gated; gated="$(resolve_gated_url "$HTM_DECKLINK_DOWNLOAD_UUID")"
+    [ -n "$gated" ] && candidates+=("$gated")
+  fi
+  candidates+=("$(cdn_url)")                             # pinned CDN path (tokenless)
+
+  local url
+  for url in "${candidates[@]}"; do
+    log "Trying: ${url%%\?*}"
+    if PKG_FILE="$(try_download "$url")"; then
+      ok "Downloaded $(basename "${url%%\?*}")"
+      return 0
+    fi
+    warn "  not available from that source."
+  done
+
+  skip "Could not fetch the Desktop Video package automatically.
+Blackmagic's CDN often needs a time-limited token. Open
+  https://www.blackmagicdesign.com/support  (Desktop Video, Linux),
+copy the download link (it ends with '?verify=...'), then re-run with:
+  sudo HTM_DECKLINK_SRC='<that-link>' bash deploy/install-decklink.sh --force
+or download the .tar.gz and pass its local path instead."
 }
 
 # Find the core (non-GUI) desktopvideo package for this distro+arch.
