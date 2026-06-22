@@ -45,7 +45,7 @@ die()  { printf '%s xx %s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 
 # A TTY for interactive prompts even when the script is piped from curl.
 TTY="/dev/tty"
-have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ]; }
+have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
 
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
@@ -178,7 +178,20 @@ install_htm_command() {
 # ---------------------------------------------------------------------------
 # TUI wizard (whiptail). Falls back to plain prompts without a TTY.
 # ---------------------------------------------------------------------------
-wt() { whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>&2 2>&3 < "$TTY" > "$TTY"; }
+wt() {
+  # Keep whiptail's UI attached to the real terminal while still capturing
+  # form/menu answers in command substitutions. Redirection order matters:
+  # whiptail/newt draws on stdout and emits answers on stderr.
+  whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+}
+
+wt_info() {
+  # Non-blocking notices avoid requiring an OK/Enter action before the first
+  # real configuration field. This is important on first-install consoles where
+  # whiptail msgbox buttons can be focused but not activatable by Enter.
+  whiptail --backtitle "Home Theater Manager Setup" --title "$1" --infobox "$2" "$3" "$4" >"$TTY" 2>&1 <"$TTY" || true
+  sleep "${5:-1}"
+}
 
 run_tui() {
   if [ "$USE_TUI" -eq 0 ] || ! have_tty || ! command -v whiptail >/dev/null 2>&1; then
@@ -186,13 +199,13 @@ run_tui() {
     return
   fi
 
-  wt --title "Welcome" --msgbox \
-    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nPress OK to begin." 14 64
+  wt_info "Welcome" \
+    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nStarting setup..." 14 64 1
 
   # Surface what auto-discovery found so the operator can confirm hardware.
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
-    wt --title "Detected hardware" --msgbox \
-      "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66
+    wt_info "Detected hardware" \
+      "Auto-discovery results:\n\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any\ntime with: sudo htm  ->  Re-discover hardware." 16 66 2
   fi
 
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
