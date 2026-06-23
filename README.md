@@ -182,13 +182,18 @@ DeckLink card). The runner uses the Settings tab payload on every
 - **Video outputs are auto-discovered** from the real DRM connectors in
   `runtime/hardware.json` (e.g. `gpu:DP-1`, `gpu:HDMI-A-1`, `gpu:VGA-1`), so the
   Settings list reflects the actual hardware. DeckLink/SDI is added when present.
+- **Audio outputs are auto-discovered** from ALSA playback endpoints (e.g.
+  `alsa:0,3` for HDMI or `alsa:2,0` for a USB interface), so newly attached
+  HDMI/DP/USB/analog outputs can be selected in Settings after re-running
+  discovery.
 - **GPU/KMS connectors are driven by `mpv --vo=drm`** (targeting the connector +
   card node), so output works on modern systems that have no `/dev/fb0`.
   **DeckLink/SDI** continues to use ffmpeg. They can run side by side.
 - `audio_output` is embedded into DeckLink/SDI when `sdi-embedded` is selected;
-  for GPU outputs mpv plays the audio (mapped to the selected ALSA device, or the
-  default HDMI/DP audio). `audio_mode=passthrough` bitstreams (mpv `--audio-spdif`
-  / ffmpeg stream copy); `pcm` decodes.
+  for GPU outputs mpv plays audio through the selected ALSA device. You can pick
+  an HDMI/DP ALSA endpoint that belongs to the same GPU interface as the video
+  connector. `audio_mode=passthrough` bitstreams (mpv `--audio-spdif` / ffmpeg
+  stream copy); `pcm` decodes.
 - `idle_screen` shows either a **black screen** or the uploaded **3840×2160 logo**
   on the selected outputs whenever no trailer/feature is playing; the show plays
   when started.
@@ -211,8 +216,8 @@ HTM_AUDIO_OUTPUTS_JSON='[{"id":"hdmi-0","name":"AVR HDMI","type":"hdmi","ffmpeg_
 ### Hardware discovery & the `htm` command
 
 The installer auto-detects GPUs (**NVIDIA / AMD / Intel**, including integrated),
-Blackmagic DeckLink cards, USB thermal printers, and audio outputs, writing
-`runtime/hardware.json` (shown in the Settings tab).
+Blackmagic DeckLink cards, USB thermal printers, audio cards, and ALSA playback
+outputs, writing `runtime/hardware.json` (shown in the Settings tab).
 
 Re-run discovery or manage the stack any time with the CLI menu:
 

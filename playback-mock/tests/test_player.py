@@ -189,6 +189,78 @@ def test_output_api_includes_drm_connector_metadata():
     }
 
 
+def test_output_api_includes_alsa_device_metadata():
+    dev = OutputDevice(
+        id="alsa:0,3", name="HDMI 0", type="hdmi",
+        ffmpeg_args=("-f", "alsa", "hw:0,3"),
+    )
+    assert dev.api_dict() == {
+        "id": "alsa:0,3",
+        "name": "HDMI 0",
+        "type": "hdmi",
+        "alsa_device": "hw:0,3",
+    }
+
+
+def test_discovers_audio_outputs_from_hardware_json(tmp_path, monkeypatch):
+    hw = tmp_path / "hardware.json"
+    hw.write_text(json.dumps({"audio_outputs": [
+        {
+            "id": "alsa:0,3",
+            "name": "HDMI 0",
+            "type": "hdmi",
+            "card": 0,
+            "device": 3,
+            "alsa_device": "hw:0,3",
+            "card_name": "HDA Intel HDMI",
+        },
+        {
+            "id": "alsa:2,0",
+            "name": "USB Audio",
+            "type": "usb",
+            "card": 2,
+            "device": 0,
+            "alsa_device": "hw:2,0",
+            "card_name": "STUDIO XL",
+        },
+    ]}))
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(hw))
+    monkeypatch.delenv("HTM_HAS_DECKLINK", raising=False)
+
+    by_id = {d.id: d for d in player_mod._discovered_audio_outputs()}
+    assert by_id["alsa:0,3"].name == "HDMI 0 - HDA Intel HDMI (hw:0,3)"
+    assert by_id["alsa:0,3"].type == "hdmi"
+    assert by_id["alsa:0,3"].ffmpeg_args == ("-f", "alsa", "hw:0,3")
+    assert by_id["alsa:2,0"].type == "usb"
+
+
+def test_device_catalog_uses_discovered_audio_outputs(tmp_path, monkeypatch):
+    hw = tmp_path / "hardware.json"
+    hw.write_text(json.dumps({
+        "connectors": [{"name": "HDMI-A-1", "status": "connected", "card": "card1"}],
+        "audio_outputs": [{
+            "id": "alsa:0,3",
+            "name": "HDMI 0",
+            "type": "hdmi",
+            "alsa_device": "hw:0,3",
+        }],
+    }))
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(hw))
+    monkeypatch.delenv("HTM_HAS_DECKLINK", raising=False)
+    monkeypatch.delenv("HTM_AUDIO_OUTPUTS_JSON", raising=False)
+    monkeypatch.delenv("HTM_VIDEO_OUTPUTS_JSON", raising=False)
+
+    outputs = DeviceCatalog().outputs()
+
+    assert outputs["video"][0]["id"] == "gpu:HDMI-A-1"
+    assert outputs["audio"] == [{
+        "id": "alsa:0,3",
+        "name": "HDMI 0 (hw:0,3)",
+        "type": "hdmi",
+        "alsa_device": "hw:0,3",
+    }]
+
+
 def test_discovery_includes_decklink_when_present(tmp_path, monkeypatch):
     hw = tmp_path / "hardware.json"
     hw.write_text(json.dumps({"connectors": [{"name": "DP-1", "status": "connected", "card": "card1"}]}))
@@ -212,6 +284,33 @@ def test_kms_media_command_uses_mpv_drm():
     assert "--audio-device=alsa/hw:0,3" in cmd
     assert cmd[-2:] == ["--", "/mnt/media/movie.mkv"]
     assert not any("audio-spdif" in a for a in cmd)  # pcm decodes, no bitstream
+
+
+def test_kms_media_command_can_use_same_hdmi_interface_for_audio_and_video():
+    catalog = DeviceCatalog(
+        video=[
+            OutputDevice(
+                id="gpu:HDMI-A-1", name="GPU HDMI-A-1", type="hdmi",
+                drm_connector="HDMI-A-1", drm_device="/dev/dri/card1",
+            ),
+        ],
+        audio=[
+            OutputDevice(
+                id="alsa:0,3", name="HDMI 0", type="hdmi",
+                ffmpeg_args=("-f", "alsa", "hw:0,3"),
+            ),
+        ],
+    )
+    player = FfmpegPlayer(catalog=catalog, ffmpeg_bin="ffmpeg")
+    cmds = player.media_commands("/mnt/media/movie.mkv", {
+        "video_outputs": ["gpu:HDMI-A-1"],
+        "audio_output": "alsa:0,3",
+        "audio_mode": "pcm",
+    })
+
+    assert len(cmds) == 1
+    assert "--drm-connector=HDMI-A-1" in cmds[0]
+    assert "--audio-device=alsa/hw:0,3" in cmds[0]
 
 
 def test_kms_media_command_passthrough_adds_spdif():
