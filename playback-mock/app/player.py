@@ -47,7 +47,12 @@ class OutputDevice:
         return bool(self.drm_connector)
 
     def api_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "type": self.type}
+        data = {"id": self.id, "name": self.name, "type": self.type}
+        if self.drm_connector:
+            data["drm_connector"] = self.drm_connector
+        if self.drm_device:
+            data["drm_device"] = self.drm_device
+        return data
 
 
 def _tuple_args(value: object) -> tuple[str, ...]:

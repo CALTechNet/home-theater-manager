@@ -147,6 +147,34 @@ def _annotate_reserved(outputs: dict) -> dict:
     return outputs
 
 
+def _hardware_connectors() -> list[dict]:
+    path = Path(app_settings.hardware_file)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    connectors = data.get("connectors", [])
+    return [c for c in connectors if isinstance(c, dict)] if isinstance(connectors, list) else []
+
+
+def _annotate_display_connectors(outputs: dict) -> dict:
+    """Attach DRM connector details from hardware discovery to GPU outputs."""
+    connectors = _hardware_connectors()
+    by_name = {str(c.get("name", "")): c for c in connectors if c.get("name")}
+    for dev in outputs.get("video", []):
+        connector = str(dev.get("drm_connector") or "")
+        if not connector and str(dev.get("id", "")).startswith("gpu:"):
+            connector = str(dev.get("id", "")).split(":", 1)[1]
+        match = by_name.get(connector)
+        if match:
+            dev["drm_connector"] = connector
+            dev["drm_device"] = dev.get("drm_device") or match.get("device")
+            dev["status"] = match.get("status")
+    return outputs
+
+
 @router.get("/outputs", response_model=OutputsOut)
 def list_outputs():
     """Discover available outputs from the playback service (SDI + GPU + audio).
@@ -155,7 +183,7 @@ def list_outputs():
     claimed the matching connector for the host's Linux text console.
     """
     try:
-        return _annotate_reserved(playback_client.outputs())
+        return _annotate_reserved(_annotate_display_connectors(playback_client.outputs()))
     except PlaybackUnavailable as e:
         raise HTTPException(503, f"playback service unavailable: {e}")
 

@@ -139,6 +139,9 @@ class OutputDevice(BaseModel):
     id: str
     name: str
     type: str  # sdi | hdmi | displayport | analog | spdif ...
+    drm_connector: str | None = None
+    drm_device: str | None = None
+    status: str | None = None
     # True when deploy/console-routing.sh has reserved this connector for the
     # host's Linux text console. Advisory only — the UI warns but still allows
     # selection (output IDs are not yet 1:1 with DRM connector names; Phase 3).
