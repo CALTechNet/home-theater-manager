@@ -7,6 +7,14 @@ export default function NowShowing() {
   const [showings, setShowings] = useState([]);
   const [pick, setPick] = useState("");
   const [error, setError] = useState("");
+  const [previewTs, setPreviewTs] = useState(() => Date.now());
+  const [previewOk, setPreviewOk] = useState(true);
+
+  // Cache-bust the output preview image every 3 seconds.
+  useEffect(() => {
+    const t = setInterval(() => setPreviewTs(Date.now()), 3000);
+    return () => clearInterval(t);
+  }, []);
 
   const poll = useCallback(async () => {
     try {
@@ -69,6 +77,26 @@ export default function NowShowing() {
           <button className="btn secondary" onClick={() => act(api.resume)} disabled={!isPaused}>▶ Play</button>
           <button className="btn secondary" onClick={() => act(api.pause)} disabled={!isPlaying}>⏸ Pause</button>
           <button className="btn danger" onClick={() => act(api.stop)} disabled={!isPlaying && !isPaused}>⏹ End Show</button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="muted">Output preview</div>
+        <div className="preview-wrap">
+          <img
+            className="preview-img"
+            alt="Current output"
+            src={api.playbackPreviewUrl(previewTs)}
+            onLoad={() => setPreviewOk(true)}
+            onError={() => setPreviewOk(false)}
+            style={{ display: previewOk ? "block" : "none" }}
+          />
+          {!previewOk && (
+            <div className="preview-empty muted">No preview — nothing playing</div>
+          )}
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          Live shot of the output · refreshes every 3s
         </div>
       </div>
 

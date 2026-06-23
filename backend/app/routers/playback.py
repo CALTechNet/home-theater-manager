@@ -2,7 +2,7 @@
 
 These proxy to the host playback service and keep Showing.status in sync.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -31,6 +31,19 @@ def get_state():
         return _state_from_dict(playback_client.state())
     except PlaybackUnavailable as e:
         raise HTTPException(503, f"playback service unavailable: {e}")
+
+
+@router.get("/preview")
+def preview():
+    """Proxy a JPEG snapshot of the current output for the Now Showing preview."""
+    try:
+        result = playback_client.preview()
+    except PlaybackUnavailable as e:
+        raise HTTPException(503, f"playback service unavailable: {e}")
+    if result is None:
+        raise HTTPException(404, "no preview available")
+    content, media_type = result
+    return Response(content=content, media_type=media_type, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/start/{showing_id}", response_model=PlaybackStateOut)

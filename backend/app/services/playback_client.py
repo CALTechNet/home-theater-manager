@@ -73,3 +73,16 @@ def stop() -> dict:
 
 def state() -> dict:
     return _get("/playback/state")
+
+
+def preview() -> tuple[bytes, str] | None:
+    """Fetch a JPEG snapshot of the current output. None when none is available (404)."""
+    try:
+        with _client() as c:
+            r = c.get("/preview")
+            if r.status_code == 404:
+                return None
+            r.raise_for_status()
+            return r.content, r.headers.get("content-type", "image/jpeg")
+    except httpx.HTTPError as e:
+        raise PlaybackUnavailable(str(e)) from e

@@ -75,6 +75,8 @@ export const api = {
 
   // playback
   playbackState: () => req("GET", "/playback/state"),
+  // Image URL (served directly, not JSON); pass a changing token to cache-bust.
+  playbackPreviewUrl: (t) => `/api/playback/preview?t=${t}`,
   startShow: (id) => req("POST", `/playback/start/${id}`),
   pause: () => req("POST", "/playback/pause"),
   resume: () => req("POST", "/playback/resume"),
