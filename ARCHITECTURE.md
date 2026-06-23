@@ -16,14 +16,15 @@ change, update this doc in the same PR.
 | Management plane (web UI, API, DB, scheduler, ticketing) | **Implemented (Phase 1)** |
 | Settings tab: video/audio output routing | **Implemented (Phase 1)** |
 | Rich media probe (aspect, audio profile, size, bitrate) | **Implemented (Phase 1)** |
-| Mock playback service (control API stand-in) | **Implemented (Phase 1)** |
+| Playback service (control API + mock mode) | **Implemented (Phase 1)** |
 | Additive schema migrations (run on startup) | **Implemented** |
 | PDF tickets (80mm receipt + 8.5×11 color) | **Implemented (Phase 1)** |
 | CLI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
 | Hardware auto-discovery (NVIDIA/AMD/Intel + iGPU, DeckLink, printer, audio) | **Implemented** |
 | Blackmagic DeckLink driver installer (DKMS) | **Implemented** |
 | `htm` management CLI (re-discover, reconfigure, logs, update) | **Implemented** |
-| Real host playback service (multi-vendor decode + DeckLink) | Designed, not built (Phase 3) |
+| ffmpeg playback runner (selected outputs + idle screen) | **Implemented; hardware validation pending** |
+| Real host playback service packaging (systemd + device permissions) | Designed, not built (Phase 3) |
 | HDR10 SDI signaling | Designed (Phase 4) |
 
 ### Repository layout
@@ -33,7 +34,8 @@ backend/        FastAPI app: routers/ (media, showings, tickets, playback,
                 ticketing[PDF], playback_client, settings_store),
                 migrations.py, models.py, schemas.py, config.py, database.py
 frontend/       React + Vite SPA (tabs/ + components/), Caddy (TLS :443 + /api)
-playback-mock/  FastAPI mock of the control API (§6) with a simulated clock
+playback-mock/  FastAPI playback service (§6): mock mode by default, ffmpeg via
+                HTM_PLAYBACK_DRIVER=ffmpeg
 deploy/         install.sh (curl|bash installer), discover.sh (hardware probe),
                 install-decklink.sh (Blackmagic DKMS driver),
                 htm-menu.sh (management CLI, installed as `htm`)
@@ -71,7 +73,8 @@ docker-compose.yml, .env.example
 ## 2. System Overview
 
 The system is split into a **management plane** (containerized) and a
-**playback plane** (runs on the host with direct hardware access). This split is
+**playback plane** (runs in mock mode for demos, or on the host with direct
+hardware access for ffmpeg mode). This split is
 deliberate: the DeckLink kernel driver, GPU access, and frame-accurate realtime
 playback are brittle inside containers, while the web/API/DB are portable and
 benefit from Docker.
@@ -154,10 +157,11 @@ operator can confirm the right file before scheduling.
 - **Ticketing service**: renders ESC/POS and sends to the Epson printer.
 - **Playback client**: thin client to the host playback control API (§6).
 
-### 3.4 Playback service — host systemd unit (Python + ffmpeg)
+### 3.4 Playback service — Python control API + ffmpeg runner
 - Exposes the **control API** over a Unix socket (or localhost-only TCP).
-- Owns the DeckLink + GPU. Builds the concatenated playlist and runs `ffmpeg`
-  with **NVDEC** decode and the **decklink** output muxer.
+- Defaults to mock mode for demos/tests. With `HTM_PLAYBACK_DRIVER=ffmpeg`, owns
+  the DeckLink + GPU/audio devices and runs `ffmpeg` for active playback and the
+  idle screen.
 - Maintains a single playback state machine (§6.3) and reports it upstream.
 
 ### 3.5 Database — SQLite + additive migrations
@@ -331,16 +335,17 @@ on the playback service. Manual shuttle controls can override at any time.
   installer's `discover.sh` records the primary vendor + hwaccel hint; the
   Phase 3 service uses it (and can still enumerate at runtime). Software decode
   is the fallback when no supported GPU is present.
-- **Output:** `-f decklink "<device name>"` muxer to the SDI card.
+- **Output:** selected Settings targets become ffmpeg output groups. DeckLink
+  defaults to `-f decklink "<device name>"`; GPU/audio targets can be supplied
+  by `HTM_VIDEO_OUTPUTS_JSON` / `HTM_AUDIO_OUTPUTS_JSON` with exact `ffmpeg_args`.
 - **Idle takeover:** outside active playback, the service keeps a low-cost
   ffmpeg process attached to the selected video outputs so the projector never
   falls back to a desktop/console/signal-loss state. Black uses `color=black`;
   logo mode uses the uploaded still with `scale`/`pad` for fit or `scale`/`crop`
   for fill, normalized to the active output mode.
-- **Playlist:** trailers then feature, played as an ordered sequence. Approach
-  chosen during implementation: concat demuxer vs. sequential ffmpeg invocations
-  managed by the service (sequential is simpler to pause/seek per-item; concat is
-  smoother between items — to be validated on hardware).
+- **Playlist:** trailers then feature, played as sequential ffmpeg invocations
+  managed by the service. This keeps per-item state and pause/resume simple;
+  transition smoothness remains a hardware validation point.
 - **HDR10 signaling:** pass mastering-display / color metadata so the DeckLink
   emits HDR10 static metadata over SDI (see §8).
 - **Audio:** embedded SDI audio is the default/cleanest path. If HDMI audio to an
@@ -419,8 +424,12 @@ running kernel.
 - Backend reaches the host playback service via the Unix socket / `host.docker.internal`.
 
 ### 9.3 Playback service (host)
-- Installed as a **systemd** unit with access to `/dev/blackmagic*`, the GPU,
-  and `/mnt/media`. Restart-on-failure.
+- The same FastAPI service runs in mock mode by default. For host playback, set
+  `HTM_PLAYBACK_DRIVER=ffmpeg`, provide exact device targets when defaults are
+  not enough, and run it with access to `/dev/blackmagic*`, the GPU/audio
+  devices, `/mnt/media`, and `/runtime` for idle-logo assets.
+- Phase 3 packaging still needs a dedicated **systemd** unit with device
+  permissions and restart-on-failure.
 
 ---
 
@@ -450,8 +459,8 @@ running kernel.
   `deploy/install.sh` installer landed alongside Phase 1.)
 - **Phase 2 — Hardening:** Alembic migrations, auth (single shared login),
   per-item playlist reordering UI, richer schedule conflict checks.
-- **Phase 3 — Real playback service:** host systemd service, ffmpeg+NVDEC+DeckLink,
-  shuttle controls wired to real hardware.
+- **Phase 3 — Real playback service:** ffmpeg runner is wired; finish host
+  systemd packaging, device permissions, and on-hardware DeckLink/GPU validation.
 - **Phase 4 — HDR10 signaling + printer hardware + sync validation.**
 
 Each phase is independently demoable; the mock playback service in Phase 1 lets
