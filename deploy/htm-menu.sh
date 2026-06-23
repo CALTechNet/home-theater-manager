@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Home Theater Manager — management TUI.
+# Home Theater Manager — management CLI.
 #
 # Installed as `htm` by the installer. Re-run it any time to re-discover
 # hardware (after swapping a GPU, DeckLink, or printer), reconfigure outputs,
@@ -24,24 +24,7 @@ SCRIPT_PATH="$SCRIPT_DIR/$(basename "$SOURCE")"
 TTY="/dev/tty"
 
 have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
-ensure_term() {
-  if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] &&
-     TERM="$TERM" tput clear >/dev/null 2>&1 &&
-     TERM="$TERM" tput cup 0 0 >/dev/null 2>&1; then
-    return
-  fi
 
-  for term in xterm-256color xterm linux vt100; do
-    if TERM="$term" tput clear >/dev/null 2>&1 &&
-       TERM="$term" tput cup 0 0 >/dev/null 2>&1; then
-      export TERM="$term"
-      return
-    fi
-  done
-
-  echo "Terminal '${TERM:-unset}' cannot draw the TUI; set TERM=xterm-256color or run from an SSH/local console terminal."
-  exit 1
-}
 require_root() {
   if [ "$(id -u)" -eq 0 ]; then
     return
@@ -50,54 +33,105 @@ require_root() {
   command -v sudo >/dev/null 2>&1 || { echo "Please run as root (sudo htm)."; exit 1; }
   exec sudo -E "$SCRIPT_PATH" "$@"
 }
-wt() {
-  # Keep the menu UI on /dev/tty while returning menu/form answers to callers.
-  # See deploy/install.sh for details on why this redirection order is
-  # important for Enter/OK handling when invoked from non-standard stdio.
-  whiptail --backtitle "Home Theater Manager" --clear --fb "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
-}
-dc() { ( cd "$INSTALL_DIR" && docker compose "$@" ); }
-pause() { wt --title "$1" --msgbox "$2" 20 72; }
 
 require() {
-  command -v whiptail >/dev/null 2>&1 || { echo "whiptail not installed."; exit 1; }
   have_tty || { echo "No TTY available; run this in an interactive terminal."; exit 1; }
-  command -v tput >/dev/null 2>&1 || { echo "tput not installed."; exit 1; }
-  ensure_term
   require_root "$@"
 }
 
+dc() { ( cd "$INSTALL_DIR" && docker compose "$@" ); }
+
+prompt() {
+  local label="$1" default="${2:-}" answer
+  if [ -n "$default" ]; then
+    printf '%s [%s]: ' "$label" "$default" > "$TTY"
+  else
+    printf '%s: ' "$label" > "$TTY"
+  fi
+  IFS= read -r answer < "$TTY" || answer=""
+  printf '%s' "${answer:-$default}"
+}
+
+confirm() {
+  local label="$1" default="${2:-y}" answer suffix
+  if [ "$default" = "y" ]; then
+    suffix="Y/n"
+  else
+    suffix="y/N"
+  fi
+  while true; do
+    printf '%s [%s]: ' "$label" "$suffix" > "$TTY"
+    IFS= read -r answer < "$TTY" || answer=""
+    answer="${answer:-$default}"
+    case "$answer" in
+      y|Y|yes|YES|Yes) return 0 ;;
+      n|N|no|NO|No) return 1 ;;
+      *) echo "Please answer yes or no." > "$TTY" ;;
+    esac
+  done
+}
+
+pause() {
+  echo > "$TTY"
+  read -rp "Press Enter to return to the menu..." _ < "$TTY"
+}
+
 rediscover() {
-  local out
   mkdir -p "$INSTALL_DIR/runtime"
-  out="$(bash "$SCRIPT_DIR/discover.sh" "$INSTALL_DIR/runtime" 2>&1)"
-  pause "Hardware discovery" "$out\n\nResults saved. Restart the stack to apply hardware-related changes."
+  bash "$SCRIPT_DIR/discover.sh" "$INSTALL_DIR/runtime" 2>&1 | tee "$TTY"
+  echo "Results saved. Restart the stack to apply hardware-related changes." > "$TTY"
+  pause
 }
 
 show_hardware() {
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
-    pause "Detected hardware" "$(cat "$INSTALL_DIR/runtime/hardware.json")"
+    cat "$INSTALL_DIR/runtime/hardware.json" > "$TTY"
   else
-    pause "Detected hardware" "No discovery data yet. Run 'Re-discover hardware' first."
+    echo "No discovery data yet. Run 'Re-discover hardware' first." > "$TTY"
   fi
+  pause
 }
 
 install_decklink() {
   local src
-  src="$(wt --title "DeckLink driver" --inputbox \
-    "Leave BLANK to auto-download Desktop Video from Blackmagic's CDN.\n\nOr paste a signed download link (ends with '?verify=...') from\nblackmagicdesign.com/support, or a local .tar.gz/.deb/.rpm path,\nif the automatic download is refused." 14 72 "${HTM_DECKLINK_SRC:-}")" || return
-  clear
-  echo "Installing DeckLink driver (this may take a few minutes)..."
+  echo "DeckLink driver installer" > "$TTY"
+  echo "Leave blank to auto-download Desktop Video from Blackmagic's CDN." > "$TTY"
+  echo "You can also paste a signed download link or a local .tar.gz/.deb/.rpm path." > "$TTY"
+  src="$(prompt "DeckLink package source" "${HTM_DECKLINK_SRC:-}")"
+  echo "Installing DeckLink driver (this may take a few minutes)..." > "$TTY"
   HTM_DECKLINK_SRC="$src" bash "$SCRIPT_DIR/install-decklink.sh" --force || true
-  echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"
+  pause
+}
+
+choose_connector() {
+  local -n _names="$1"
+  local choice index
+  while true; do
+    echo "Available connectors:" > "$TTY"
+    for index in "${!_names[@]}"; do
+      printf '  %s) %s\n' "$((index + 1))" "${_names[$index]}" > "$TTY"
+    done
+    echo "  0) Cancel / DeckLink SDI playback" > "$TTY"
+    choice="$(prompt "Projector connector" "0")"
+    case "$choice" in
+      0|"") return 1 ;;
+      *[!0-9]*) echo "Please enter a number." > "$TTY" ;;
+      *)
+        if [ "$choice" -ge 1 ] && [ "$choice" -le "${#_names[@]}" ]; then
+          printf '%s' "${_names[$((choice - 1))]}"
+          return 0
+        fi
+        echo "Choose a number from the list." > "$TTY"
+        ;;
+    esac
+  done
 }
 
 console_routing() {
-  # Build a connector picker from discovery (or live /sys), then preview/apply.
-  local conns=() name status line
-  while IFS=$'\t' read -r name status; do
+  local conns=() name video want_serial=0
+  while IFS=$'\t' read -r name _status; do
     [ -n "$name" ] || continue
-    conns+=("$name" "$status" "off")
+    conns+=("$name")
   done < <(
     for d in /sys/class/drm/card*-*/; do
       [ -e "$d/status" ] || continue
@@ -107,49 +141,51 @@ console_routing() {
   )
 
   if [ ${#conns[@]} -eq 0 ]; then
-    if ! wt --title "Console / video routing" --yesno \
-      "No GPU display connectors were detected on this box.\n\nThat is normal for DeckLink-SDI playback: SDI never touches the\nLinux console, so the VGA console is already free.\n\nAdd a serial console (ttyS0) as a headless fallback?" 14 70; then
-      return
+    echo "No GPU display connectors were detected." > "$TTY"
+    echo "That is normal for DeckLink-SDI playback; SDI bypasses the Linux console." > "$TTY"
+    if confirm "Add a serial console (ttyS0) as a headless fallback?" "n"; then
+      bash "$SCRIPT_DIR/console-routing.sh" --serial --apply
     fi
-    clear; bash "$SCRIPT_DIR/console-routing.sh" --serial --apply
-    echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"; return
+    pause
+    return
   fi
 
-  local video
-  video="$(wt --title "Playback output" --radiolist \
-    "Pick the GPU connector that drives the PROJECTOR.\nIt will be kept clear of the Linux text console.\n(Space to select, Enter to confirm. Cancel if playback is DeckLink SDI.)" \
-    18 72 8 "${conns[@]}")" || video=""
-
-  local want_serial=0
-  wt --title "Serial console" --yesno \
-    "Also add a serial console (ttyS0,115200) as a headless\nrecovery fallback, in addition to the physical VGA console?" 10 70 && want_serial=1
+  video="$(choose_connector conns)" || video=""
+  confirm "Also add a serial console (ttyS0,115200) as a headless recovery fallback?" "n" && want_serial=1
 
   local -a args=()
   [ -n "$video" ] && args+=(--video-output "$video")
   [ "$want_serial" -eq 1 ] && args+=(--serial)
   if [ ${#args[@]} -eq 0 ]; then
-    pause "Console / video routing" "Nothing selected — no changes made."
+    echo "Nothing selected; no changes made." > "$TTY"
+    pause
     return
   fi
 
-  local preview
-  preview="$(bash "$SCRIPT_DIR/console-routing.sh" "${args[@]}" 2>&1)"
-  if wt --title "Apply console routing?" --yesno \
-    "$preview\n\nApply now? (writes a GRUB drop-in; takes effect after reboot)" 22 76; then
-    clear
+  echo "Preview:" > "$TTY"
+  bash "$SCRIPT_DIR/console-routing.sh" "${args[@]}" 2>&1 | tee "$TTY"
+  if confirm "Apply now? This writes a GRUB drop-in and takes effect after reboot." "n"; then
     bash "$SCRIPT_DIR/console-routing.sh" "${args[@]}" --apply
-    echo; read -rp "Press Enter to return to the menu..." _ < "$TTY"
   fi
+  pause
 }
 
 reconfigure_ticket_style() {
   local style
-  style="$(wt --title "Default ticket style" --menu \
-    "Tickets are generated as PDFs printed from your workstation.\nDefault style (changeable per print in the UI):" 14 64 2 \
-    receipt "Thermal receipt (80mm)" \
-    fullpage "Full-page color (8.5x11)")" || return
+  while true; do
+    echo "Default ticket style:" > "$TTY"
+    echo "  1) receipt  - Thermal receipt (80mm)" > "$TTY"
+    echo "  2) fullpage - Full-page color (8.5x11)" > "$TTY"
+    style="$(prompt "Choose ticket style" "receipt")"
+    case "$style" in
+      1|receipt) style="receipt"; break ;;
+      2|fullpage) style="fullpage"; break ;;
+      *) echo "Please choose 1, 2, receipt, or fullpage." > "$TTY" ;;
+    esac
+  done
   _set_env HTM_TICKET_STYLE "$style"
-  pause "Tickets" "Default style set to '$style'. Choose 'Restart stack' to apply."
+  echo "Default style set to '$style'. Choose 'Restart stack' to apply." > "$TTY"
+  pause
 }
 
 # Upsert KEY=VALUE in the .env file.
@@ -163,42 +199,50 @@ _set_env() {
   fi
 }
 
+show_menu() {
+  cat > "$TTY" <<EOF
+
+Home Theater Manager
+Install: $INSTALL_DIR
+
+  1) Re-discover hardware
+  2) Show detected hardware
+  3) Console / video output routing
+  4) Install / update Blackmagic DeckLink driver
+  5) Set default ticket style
+  6) Show stack status
+  7) Tail logs
+  8) Restart stack
+  9) Start stack
+ 10) Stop stack
+ 11) Update app
+  0) Exit
+
+EOF
+}
+
 main_menu() {
+  local choice
   while true; do
-    local choice
-    choice="$(wt --title "Main menu" --menu "Install: $INSTALL_DIR" 20 70 10 \
-      discover  "Re-discover hardware (GPU/DeckLink/printer/audio)" \
-      hardware  "Show detected hardware" \
-      console   "Console / video output routing (VGA console + serial)" \
-      decklink  "Install / update Blackmagic DeckLink driver" \
-      tickets   "Set default ticket style (receipt / full-page)" \
-      status    "Show stack status" \
-      logs      "Tail logs" \
-      restart   "Restart stack" \
-      start     "Start stack" \
-      stop      "Stop stack" \
-      update    "Update app (git pull + rebuild)" \
-      quit      "Exit")" || break
+    show_menu
+    choice="$(prompt "Choose an option" "0")"
 
     case "$choice" in
-      discover) rediscover ;;
-      hardware) show_hardware ;;
-      console)  console_routing ;;
-      decklink) install_decklink ;;
-      tickets)  reconfigure_ticket_style ;;
-      status)   pause "Status" "$(dc ps 2>&1)" ;;
-      logs)     clear; echo "Ctrl-C to return to menu."; dc logs -f --tail 100 || true ;;
-      restart)  pause "Restart" "$(dc up -d --build 2>&1 | tail -20)" ;;
-      start)    pause "Start" "$(dc up -d 2>&1 | tail -20)" ;;
-      stop)     pause "Stop" "$(dc down 2>&1 | tail -20)" ;;
-      update)
-        local out
-        out="$(cd "$INSTALL_DIR" && git pull 2>&1 && docker compose up -d --build 2>&1 | tail -20)"
-        pause "Update" "$out" ;;
-      quit) break ;;
+      1) rediscover ;;
+      2) show_hardware ;;
+      3) console_routing ;;
+      4) install_decklink ;;
+      5) reconfigure_ticket_style ;;
+      6) dc ps 2>&1 | tee "$TTY"; pause ;;
+      7) echo "Ctrl-C to return to the shell." > "$TTY"; dc logs -f --tail 100 || true; pause ;;
+      8) dc up -d --build 2>&1 | tail -20 | tee "$TTY"; pause ;;
+      9) dc up -d 2>&1 | tail -20 | tee "$TTY"; pause ;;
+      10) dc down 2>&1 | tail -20 | tee "$TTY"; pause ;;
+      11) ( cd "$INSTALL_DIR" && git pull && docker compose up -d --build ) 2>&1 | tail -40 | tee "$TTY"; pause ;;
+      0|q|quit|exit) break ;;
+      *) echo "Unknown option: $choice" > "$TTY"; pause ;;
     esac
   done
-  clear
 }
 
 require "$@"

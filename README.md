@@ -13,14 +13,14 @@ on an Epson thermal printer — all from a web UI on port 443.
 
 ## Quick start (Ubuntu Server or Rocky Linux)
 
-One command installs Docker, fetches the app, runs a TUI setup wizard, and
+One command installs Docker, fetches the app, runs a CLI setup wizard, and
 starts everything:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CALTechNet/home-theater-manager/main/deploy/install.sh | sudo bash
 ```
 
-The wizard (whiptail TUI) asks for your theater name, media location, seat grid,
+The wizard asks for your theater name, media location, seat grid,
 and default ticket style, then builds and launches the stack. When it finishes
 it prints the URL:
 
@@ -34,8 +34,10 @@ The certificate is self-signed by default, so your browser warns once — accept
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CALTechNet/home-theater-manager/main/deploy/install.sh \
-  | sudo HTM_MEDIA_HOST_PATH=/mnt/media HTM_THEATER_NAME="My Cinema" bash -s -- --no-tui
+  | sudo HTM_MEDIA_HOST_PATH=/mnt/media HTM_THEATER_NAME="My Cinema" bash -s -- --non-interactive
 ```
+
+`--no-tui` remains accepted as a backwards-compatible alias.
 
 Supported targets: **Ubuntu Server 22.04/24.04** and **Rocky Linux 9/10**
 (also Debian / RHEL / Alma via the same package families).
@@ -129,7 +131,7 @@ The installer auto-detects GPUs (**NVIDIA / AMD / Intel**, including integrated)
 Blackmagic DeckLink cards, USB thermal printers, and audio outputs, writing
 `runtime/hardware.json` (shown in the Settings tab).
 
-Re-run discovery or manage the stack any time with the TUI:
+Re-run discovery or manage the stack any time with the CLI menu:
 
 ```bash
 sudo htm
@@ -258,7 +260,7 @@ npm run dev                                          # http://localhost:5173
 backend/        FastAPI app (API, scheduler, media scan, PDF tickets, migrations)
 frontend/       React + Vite SPA, served by Caddy (TLS :443 + /api proxy)
 playback-mock/  Stand-in playback control service (Phase 1)
-deploy/         install.sh (installer), discover.sh (hardware), htm-menu.sh (TUI),
+deploy/         install.sh (installer), discover.sh (hardware), htm-menu.sh (CLI menu),
                 console-routing.sh (VGA console vs. projector output / serial console)
 runtime/        hardware discovery output (gitignored)
 docker-compose.yml
