@@ -283,6 +283,7 @@ class PlaybackEngine(Protocol):
     def stop(self) -> dict: ...
     def snapshot(self) -> dict: ...
     def outputs(self) -> dict: ...
+    def reload_outputs(self) -> dict: ...
 
 
 class SimulatedPlayer:
@@ -380,6 +381,11 @@ class SimulatedPlayer:
     def outputs(self) -> dict:
         return self.catalog.outputs()
 
+    def reload_outputs(self) -> dict:
+        with self.lock:
+            self.catalog = DeviceCatalog()
+            return self.outputs()
+
 
 class FfmpegPlayer:
     """Host-side ffmpeg player with idle screen ownership of selected outputs."""
@@ -412,6 +418,13 @@ class FfmpegPlayer:
 
     def outputs(self) -> dict:
         return self.catalog.outputs()
+
+    def reload_outputs(self) -> dict:
+        with self.lock:
+            self.catalog = DeviceCatalog()
+            if self.state in ("IDLE", "LOADED"):
+                self._start_idle_locked()
+            return self.outputs()
 
     def load(self, showing_id: int, items: list[dict], outputs: dict | None) -> dict:
         with self.lock:

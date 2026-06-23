@@ -4,6 +4,7 @@ Uses an isolated SQLite file and a fake playback service so no hardware or
 network is required.
 """
 import os
+import subprocess
 import tempfile
 from io import BytesIO
 
@@ -370,3 +371,43 @@ def test_display_connector_annotation(monkeypatch):
     assert by_id["gpu:HDMI-A-1"]["drm_device"] == "/dev/dri/card9"
     assert by_id["gpu:HDMI-A-1"]["status"] == "disconnected"
     assert "drm_connector" not in by_id["decklink:0"]
+
+
+def test_hardware_rediscovery_runs_script_and_reloads_playback(tmp_path, monkeypatch):
+    from app.routers import settings as s
+
+    script = tmp_path / "discover.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    hardware = tmp_path / "runtime" / "hardware.json"
+    monkeypatch.setattr(s.app_settings, "hardware_discovery_script", str(script))
+    monkeypatch.setattr(s.app_settings, "hardware_file", str(hardware))
+    monkeypatch.setattr(s.app_settings, "hardware_discovery_timeout_s", 5.0)
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        hardware.parent.mkdir(parents=True, exist_ok=True)
+        hardware.write_text('{"discovered_at":"now","connectors":[]}')
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(s.subprocess, "run", fake_run)
+    monkeypatch.setattr(s.playback_client, "reload_outputs", lambda: {"ok": True})
+
+    result = s._run_hardware_discovery()
+
+    assert result["available"] is True
+    assert calls[0][0] == ["bash", str(script), str(hardware.parent), "--quiet"]
+
+
+def test_hardware_rediscovery_reports_missing_script(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from app.routers import settings as s
+
+    monkeypatch.setattr(s.app_settings, "hardware_discovery_script", str(tmp_path / "missing.sh"))
+    monkeypatch.setattr(s.app_settings, "hardware_file", str(tmp_path / "runtime" / "hardware.json"))
+
+    with pytest.raises(HTTPException) as exc:
+        s._run_hardware_discovery()
+
+    assert exc.value.status_code == 501

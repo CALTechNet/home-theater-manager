@@ -14,10 +14,16 @@ export default function Settings() {
   const [logoFile, setLogoFile] = useState(null);
   const [timeFormat, setTimeFormat] = useState("12h");
   const [hardware, setHardware] = useState(null);
+  const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
   const connectors = hardware?.connectors || [];
+
+  const loadOutputs = () => api.listOutputs().then(setOutputs).catch((e) =>
+    setError(`Could not list outputs (${e.message}). Is the playback service up?`),
+  );
+  const loadHardware = () => api.getHardware().then(setHardware).catch(() => {});
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -29,10 +35,8 @@ export default function Settings() {
       setIdleLogoPath(s.idle_logo_path || "");
       setTimeFormat(s.time_format || "12h");
     }).catch((e) => setError(e.message));
-    api.listOutputs().then(setOutputs).catch((e) =>
-      setError(`Could not list outputs (${e.message}). Is the playback service up?`),
-    );
-    api.getHardware().then(setHardware).catch(() => {});
+    loadOutputs();
+    loadHardware();
   }, []);
 
   const toggleVideo = (id) =>
@@ -74,6 +78,22 @@ export default function Settings() {
       setMsg("Settings saved ✓");
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function rediscover() {
+    setError("");
+    setMsg("");
+    setDiscovering(true);
+    try {
+      const discovered = await api.rediscoverHardware();
+      setHardware(discovered);
+      await loadOutputs();
+      setMsg("Hardware rediscovered ✓");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDiscovering(false);
     }
   }
 
@@ -254,11 +274,16 @@ export default function Settings() {
       </div>
 
       <div className="card" style={{ marginTop: 24 }}>
-        <h3 style={{ marginTop: 0 }}>Detected hardware</h3>
+        <div className="spread" style={{ marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Detected hardware</h3>
+          <button className="btn secondary" onClick={rediscover} disabled={discovering}>
+            {discovering ? "Re-discovering…" : "Re-discover"}
+          </button>
+        </div>
         {!hardware || hardware.available === false ? (
           <p className="muted">
-            No discovery data yet. Run <code>sudo htm → Re-discover hardware</code> on
-            the server (e.g. after swapping a GPU, DeckLink, or printer).
+            No discovery data yet. Click <b>Re-discover</b> after swapping a GPU,
+            display, audio interface, DeckLink, or printer.
           </p>
         ) : (
           <div className="stack">

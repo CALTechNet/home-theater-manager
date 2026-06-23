@@ -72,6 +72,7 @@ export const api = {
   uploadIdleLogo: (file) => upload("/settings/idle-logo", "file", file),
   listOutputs: () => req("GET", "/settings/outputs"),
   getHardware: () => req("GET", "/settings/hardware"),
+  rediscoverHardware: () => req("POST", "/settings/hardware/discover"),
 
   // playback
   playbackState: () => req("GET", "/playback/state"),
