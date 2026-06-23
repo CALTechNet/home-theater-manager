@@ -146,6 +146,26 @@ def test_ticket_copy_index_and_pdf(client):
     assert client.get(f"/api/tickets/{ticket_id}/pdf?style=bogus").status_code == 422
 
 
+def test_playback_preview_proxy(client, monkeypatch):
+    from app.services import playback_client
+    from app.services.playback_client import PlaybackUnavailable
+
+    monkeypatch.setattr(playback_client, "preview", lambda: (b"\xff\xd8JPG", "image/jpeg"))
+    r = client.get("/api/playback/preview")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.content == b"\xff\xd8JPG"
+
+    monkeypatch.setattr(playback_client, "preview", lambda: None)
+    assert client.get("/api/playback/preview").status_code == 404
+
+    def _down():
+        raise PlaybackUnavailable("down")
+
+    monkeypatch.setattr(playback_client, "preview", _down)
+    assert client.get("/api/playback/preview").status_code == 503
+
+
 def test_seat_grid(client):
     grid = client.get("/api/tickets/seat-grid").json()
     assert grid["rows"] == ["A", "B", "C", "D", "E", "F"]

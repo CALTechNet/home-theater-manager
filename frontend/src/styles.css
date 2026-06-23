@@ -143,5 +143,10 @@ th { color: var(--muted); font-weight: 500; }
 .shuttle { display: flex; gap: 10px; margin-top: 14px; }
 .shuttle button { font-size: 16px; padding: 12px 20px; }
 
+/* Now Showing output preview */
+.preview-wrap { position: relative; margin-top: 8px; background: #000; border: 1px solid var(--border); border-radius: 8px; min-height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.preview-img { width: 100%; max-width: 640px; display: block; }
+.preview-empty { padding: 24px; }
+
 label.chk { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; }
 .stack > * + * { margin-top: 12px; }
