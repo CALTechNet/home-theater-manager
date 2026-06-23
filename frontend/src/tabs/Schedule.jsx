@@ -3,6 +3,9 @@ import { api } from "../api.js";
 import Wizard from "../components/Wizard.jsx";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HOURS = Array.from({ length: 24 }, (_, h) => h); // 0..23, midnight -> midnight
+const HOUR_PX = 44; // vertical pixels per hour
+const DAY_PX = 24 * HOUR_PX;
 
 function startOfWeek(d) {
   const date = new Date(d);
@@ -10,6 +13,55 @@ function startOfWeek(d) {
   date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() - day);
   return date;
+}
+
+function minutesIntoDay(d) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function hourLabel(h) {
+  const ampm = h < 12 ? "AM" : "PM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display} ${ampm}`;
+}
+
+function fmtTime(d) {
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * Pack a day's showings into lanes so overlapping showings sit side by side,
+ * and flag the ones that actually collide (runtime overlaps another's start).
+ */
+function layoutDay(dayShowings) {
+  const sorted = [...dayShowings].sort(
+    (a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start),
+  );
+  const laneEnds = []; // last end-minute per lane
+  const blocks = sorted.map((s) => {
+    const start = new Date(s.scheduled_start);
+    const startMin = minutesIntoDay(start);
+    const endMin = startMin + (s.computed_runtime_min || 0);
+    let lane = laneEnds.findIndex((end) => end <= startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(endMin);
+    } else {
+      laneEnds[lane] = endMin;
+    }
+    return { s, startMin, endMin, lane };
+  });
+
+  const overlapping = new Set();
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      if (blocks[i].startMin < blocks[j].endMin && blocks[j].startMin < blocks[i].endMin) {
+        overlapping.add(blocks[i].s.id);
+        overlapping.add(blocks[j].s.id);
+      }
+    }
+  }
+  return { blocks, lanes: Math.max(1, laneEnds.length), overlapping };
 }
 
 function isoLocal(d) {
@@ -59,6 +111,15 @@ export default function Schedule({ onPrintTickets }) {
     setWeekStart(d);
   };
 
+  // Per-day layout (lanes + overlap flags) and week-level totals.
+  const days = DAYS.map((label, i) => {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + i);
+    return { label, date, ...layoutDay(byDay(i)) };
+  });
+  const totalShowtimes = showings.length;
+  const totalOverlaps = days.reduce((n, d) => n + d.overlapping.size, 0);
+
   return (
     <>
       <div className="spread" style={{ marginBottom: 16 }}>
@@ -75,30 +136,75 @@ export default function Schedule({ onPrintTickets }) {
         <button className="btn" onClick={() => setWizardOpen(true)}>+ New Showing</button>
       </div>
 
+      <div className="spread" style={{ marginBottom: 12 }}>
+        <span className="muted">
+          {totalShowtimes} showtime{totalShowtimes === 1 ? "" : "s"} this week
+        </span>
+        {totalOverlaps > 0 ? (
+          <span className="error">⚠ {totalOverlaps} overlapping showing{totalOverlaps === 1 ? "" : "s"}</span>
+        ) : (
+          <span className="ok">No overlaps</span>
+        )}
+      </div>
+
       {error && <p className="error">{error}</p>}
 
-      <div className="week">
-        {DAYS.map((label, i) => {
-          const day = new Date(weekStart);
-          day.setDate(day.getDate() + i);
-          return (
-            <div className="day" key={label}>
-              <h4>{label} {day.getDate()}</h4>
-              {byDay(i).map((s) => (
-                <div className="show-chip" key={s.id} onClick={() => setSelected(s)}>
-                  <div className="t">{s.title || "(untitled)"}</div>
-                  <div className="muted">
-                    {new Date(s.scheduled_start).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    · {s.computed_runtime_min}m · {s.status}
-                  </div>
-                </div>
-              ))}
+      <div className="cal card">
+        <div className="cal-head">
+          <div className="cal-gutter-head" />
+          {days.map(({ label, date, blocks, overlapping }) => (
+            <div className="cal-day-head" key={label}>
+              <div className="cal-day-name">{label} {date.getDate()}</div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {blocks.length} showtime{blocks.length === 1 ? "" : "s"}
+                {overlapping.size > 0 && <span className="error"> · ⚠ {overlapping.size}</span>}
+              </div>
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        <div className="cal-body">
+          <div className="cal-gutter" style={{ height: DAY_PX }}>
+            {HOURS.map((h) => (
+              <div className="cal-hour-label" key={h} style={{ height: HOUR_PX }}>
+                {hourLabel(h)}
+              </div>
+            ))}
+          </div>
+
+          {days.map(({ label, blocks, lanes, overlapping }) => (
+            <div className="cal-day" key={label} style={{ height: DAY_PX }}>
+              {HOURS.map((h) => (
+                <div className="cal-hour-line" key={h} style={{ top: h * HOUR_PX }} />
+              ))}
+              {blocks.map(({ s, startMin, lane }) => {
+                const top = (startMin / 60) * HOUR_PX;
+                const height = Math.max(((s.computed_runtime_min || 0) / 60) * HOUR_PX, 22);
+                const width = 100 / lanes;
+                const isOverlap = overlapping.has(s.id);
+                return (
+                  <div
+                    className={`cal-event${isOverlap ? " overlap" : ""}`}
+                    key={s.id}
+                    onClick={() => setSelected(s)}
+                    style={{
+                      top,
+                      height,
+                      left: `calc(${lane * width}% + 2px)`,
+                      width: `calc(${width}% - 4px)`,
+                    }}
+                    title={`${s.title || "(untitled)"} · ${fmtTime(new Date(s.scheduled_start))} · ${s.computed_runtime_min}m`}
+                  >
+                    <div className="t">{s.title || "(untitled)"}</div>
+                    <div className="cal-event-meta">
+                      {fmtTime(new Date(s.scheduled_start))} · {s.computed_runtime_min}m
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
       {wizardOpen && (

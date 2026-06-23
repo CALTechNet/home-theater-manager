@@ -79,12 +79,31 @@ input, select {
   padding: 16px;
 }
 
-/* Schedule week grid */
-.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-.day { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; min-height: 160px; padding: 8px; }
-.day h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
-.show-chip { background: var(--panel-2); border-left: 3px solid var(--accent-2); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: pointer; font-size: 13px; }
-.show-chip .t { font-weight: 600; }
+/* Schedule — week calendar (midnight -> midnight, hour by hour) */
+.cal { padding: 0; overflow: hidden; }
+.cal-gutter-head, .cal-gutter { width: 56px; flex: none; }
+.cal-head { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.cal-day-head { flex: 1; text-align: center; padding: 8px 4px; border-left: 1px solid var(--border); }
+.cal-day-name { font-weight: 600; font-size: 13px; }
+.cal-body { display: flex; max-height: 70vh; overflow-y: auto; }
+.cal-gutter { position: relative; }
+.cal-hour-label { font-size: 11px; color: var(--muted); text-align: right; padding-right: 6px; transform: translateY(-6px); }
+.cal-day { flex: 1; position: relative; border-left: 1px solid var(--border); }
+.cal-hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); opacity: 0.5; }
+.cal-event {
+  position: absolute;
+  background: var(--panel-2);
+  border-left: 3px solid var(--accent-2);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border);
+}
+.cal-event .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-event-meta { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-event.overlap { border-left-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
 
 /* Media list */
 table { width: 100%; border-collapse: collapse; }
