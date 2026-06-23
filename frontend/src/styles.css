@@ -45,6 +45,12 @@ nav.tabs button.active { background: var(--panel-2); color: var(--ink); }
 /* Right-hand status cluster in the top bar (clock, now showing). */
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
 .topbar-clock { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: 0.5px; }
+.topbar-now { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.topbar-now .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.topbar-now .dot.live { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.topbar-now .label { color: var(--muted); }
+.topbar-now .now-title { color: var(--ink); font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-now.idle .label { color: var(--muted); }
 
 main { padding: 20px; max-width: 1200px; margin: 0 auto; }
 
