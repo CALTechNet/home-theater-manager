@@ -52,6 +52,16 @@ def test_health(client):
     assert client.get("/api/health").json() == {"status": "ok"}
 
 
+def test_media_storage(client):
+    # HTM_MEDIA_ROOT points at a real temp dir, so disk_usage resolves.
+    r = client.get("/api/media/storage")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] > 0
+    assert body["used"] + body["free"] <= body["total"]
+    assert 0.0 <= body["percent_used"] <= 100.0
+
+
 def test_runtime_rounding():
     # 5400s feature + 150s trailer = 5550s -> 92.5 min -> rounds to 92.
     items = [

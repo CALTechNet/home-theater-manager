@@ -4,12 +4,14 @@ import { fmtBitrate, fmtResolution, fmtSize } from "../format.js";
 
 export default function Media() {
   const [media, setMedia] = useState([]);
+  const [storage, setStorage] = useState(null);
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
   const [msg, setMsg] = useState("");
 
   const load = () => api.listMedia().then(setMedia).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []);
+  const loadStorage = () => api.mediaStorage().then(setStorage).catch(() => setStorage(null));
+  useEffect(() => { load(); loadStorage(); }, []);
 
   async function scan() {
     setScanning(true);
@@ -46,6 +48,8 @@ export default function Media() {
 
   return (
     <>
+      {storage && <StorageBar storage={storage} />}
+
       <div className="spread" style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Media Library</h2>
         <button className="btn" disabled={scanning} onClick={scan}>
@@ -110,5 +114,26 @@ export default function Media() {
         </table>
       </div>
     </>
+  );
+}
+
+// Storage usage summary for the media volume.
+function StorageBar({ storage }) {
+  const pct = Math.min(100, Math.max(0, storage.percent_used || 0));
+  // Warn as the volume fills up.
+  const tone = pct >= 90 ? "danger" : pct >= 75 ? "warn" : "ok";
+  return (
+    <div className="card storage" style={{ marginBottom: 16 }}>
+      <div className="spread">
+        <b>Storage</b>
+        <span className="muted">
+          {fmtSize(storage.used)} used of {fmtSize(storage.total)} ({pct}%) ·{" "}
+          {fmtSize(storage.free)} free
+        </span>
+      </div>
+      <div className="storage-track" style={{ marginTop: 8 }}>
+        <div className={`storage-fill ${tone}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
