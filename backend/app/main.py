@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown_scheduler()
 
 
-app = FastAPI(title="Home Theater Manager", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Home Theater Manager", version="1.0.0", lifespan=lifespan)
 
 app.include_router(media.router)
 app.include_router(showings.router)
