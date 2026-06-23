@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import Wizard from "../components/Wizard.jsx";
 
@@ -6,6 +6,11 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 24 }, (_, h) => h); // 0..23, midnight -> midnight
 const HOUR_PX = 44; // vertical pixels per hour
 const DAY_PX = 24 * HOUR_PX;
+// Default visible window: 11am -> 10pm. Full 24h stays scrollable up/down.
+const DEFAULT_START_HOUR = 11;
+const DEFAULT_END_HOUR = 22; // 10 PM (inclusive)
+const VISIBLE_HOURS = DEFAULT_END_HOUR - DEFAULT_START_HOUR + 1;
+const CAL_BODY_PX = VISIBLE_HOURS * HOUR_PX;
 
 function startOfWeek(d) {
   const date = new Date(d);
@@ -78,6 +83,14 @@ export default function Schedule({ onPrintTickets }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  const calBodyRef = useRef(null);
+
+  // Open on the 11am–10pm band; the rest of the day is a scroll away.
+  useEffect(() => {
+    if (calBodyRef.current) {
+      calBodyRef.current.scrollTop = DEFAULT_START_HOUR * HOUR_PX;
+    }
+  }, []);
 
   const load = useCallback(() => {
     const end = new Date(weekStart);
@@ -163,7 +176,7 @@ export default function Schedule({ onPrintTickets }) {
           ))}
         </div>
 
-        <div className="cal-body">
+        <div className="cal-body" ref={calBodyRef} style={{ height: CAL_BODY_PX }}>
           <div className="cal-gutter" style={{ height: DAY_PX }}>
             {HOURS.map((h) => (
               <div className="cal-hour-label" key={h} style={{ height: HOUR_PX }}>
