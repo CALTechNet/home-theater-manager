@@ -21,6 +21,22 @@ async function req(method, path, body) {
   return res.json();
 }
 
+async function upload(path, field, file) {
+  const form = new FormData();
+  form.append(field, file);
+  const res = await fetch(BASE + path, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  return res.json();
+}
+
 export const api = {
   // media
   listMedia: (kind) => req("GET", `/media${kind ? `?kind=${kind}` : ""}`),
@@ -51,6 +67,7 @@ export const api = {
   // settings
   getSettings: () => req("GET", "/settings"),
   updateSettings: (body) => req("PUT", "/settings", body),
+  uploadIdleLogo: (file) => upload("/settings/idle-logo", "file", file),
   listOutputs: () => req("GET", "/settings/outputs"),
   getHardware: () => req("GET", "/settings/hardware"),
 

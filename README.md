@@ -82,8 +82,10 @@ The UI has five tabs:
    - **Full-page color** — 8.5×11 portrait "movie ticket"
 5. **Settings** — assign playback **video output(s)** (Blackmagic SDI, GPU
    HDMI/DisplayPort, or several at once to mirror) and the **audio output** +
-   mode (passthrough for Atmos/DTS:X bitstreaming, or decode to PCM). Also shows
-   **detected hardware** from auto-discovery.
+   mode (passthrough for Atmos/DTS:X bitstreaming, or decode to PCM). Upload a
+   **3840×2160 idle logo** or choose black screen so the playback service keeps
+   the selected video outputs blank/logoed between trailers and movies. Also
+   shows **detected hardware** from auto-discovery.
 
 **First run:** open **Media → Scan library**, tag a feature and some trailers,
 then create a showing from the **Schedule** tab.

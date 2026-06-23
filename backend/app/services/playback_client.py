@@ -45,6 +45,11 @@ def load(showing_id: int, items: list[dict], outputs: dict | None = None) -> dic
     return _post("/playback/load", payload)
 
 
+def configure(outputs: dict) -> dict:
+    """Apply output and idle-screen routing even when no showing is loaded."""
+    return _post("/playback/configure", {"outputs": outputs})
+
+
 def outputs() -> dict:
     """Available video/audio output devices reported by the playback service."""
     return _get("/outputs")

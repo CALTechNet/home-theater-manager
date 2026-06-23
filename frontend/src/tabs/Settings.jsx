@@ -8,6 +8,10 @@ export default function Settings() {
   const [videoIds, setVideoIds] = useState([]);
   const [audioId, setAudioId] = useState("");
   const [audioMode, setAudioMode] = useState("passthrough");
+  const [idleMode, setIdleMode] = useState("black");
+  const [idleScale, setIdleScale] = useState("fit");
+  const [idleLogoPath, setIdleLogoPath] = useState("");
+  const [logoFile, setLogoFile] = useState(null);
   const [hardware, setHardware] = useState(null);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -17,6 +21,9 @@ export default function Settings() {
       setVideoIds(s.video_output_ids || []);
       setAudioId(s.audio_output_id || "");
       setAudioMode(s.audio_mode || "passthrough");
+      setIdleMode(s.idle_screen_mode || "black");
+      setIdleScale(s.idle_logo_scale || "fit");
+      setIdleLogoPath(s.idle_logo_path || "");
     }).catch((e) => setError(e.message));
     api.listOutputs().then(setOutputs).catch((e) =>
       setError(`Could not list outputs (${e.message}). Is the playback service up?`),
@@ -31,11 +38,19 @@ export default function Settings() {
     setError("");
     setMsg("");
     try {
+      if (logoFile) {
+        const uploaded = await api.uploadIdleLogo(logoFile);
+        setIdleLogoPath(uploaded.idle_logo_path);
+        setIdleMode("logo");
+      }
       await api.updateSettings({
         video_output_ids: videoIds,
         audio_output_id: audioId || null,
         audio_mode: audioMode,
+        idle_screen_mode: logoFile ? "logo" : idleMode,
+        idle_logo_scale: idleScale,
       });
+      setLogoFile(null);
       setMsg("Settings saved ✓");
     } catch (e) {
       setError(e.message);
@@ -121,6 +136,57 @@ export default function Settings() {
               <option value="passthrough">Passthrough (bitstream Atmos/DTS:X/etc.)</option>
               <option value="pcm">Decode to PCM</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Idle screen</h3>
+        <p className="muted">
+          The playback service keeps control of the selected video outputs between shows.
+        </p>
+
+        <div className="row" style={{ alignItems: "flex-start", gap: 24 }}>
+          <div style={{ flex: 1 }}>
+            <div className="muted">When no trailers or movie are playing</div>
+            <label className="chk" style={{ marginTop: 8 }}>
+              <input
+                type="radio"
+                name="idle-mode"
+                checked={idleMode === "black"}
+                onChange={() => setIdleMode("black")}
+              />
+              Black screen
+            </label>
+            <label className="chk" style={{ marginTop: 8 }}>
+              <input
+                type="radio"
+                name="idle-mode"
+                checked={idleMode === "logo"}
+                onChange={() => setIdleMode("logo")}
+              />
+              Logo
+            </label>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div className="muted">Logo scaling</div>
+            <select value={idleScale} onChange={(e) => setIdleScale(e.target.value)}>
+              <option value="fit">Fit inside output</option>
+              <option value="fill">Fill output</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div className="muted">3840x2160 logo image</div>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+          />
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            {logoFile ? logoFile.name : idleLogoPath ? idleLogoPath : "No logo uploaded"}
           </div>
         </div>
       </div>

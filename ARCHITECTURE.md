@@ -213,7 +213,9 @@ MediaFile
 
 AppSettings            # singleton (id=1): output routing
   video_output_ids (JSON list — multiple = mirror to all),
-  audio_output_id, audio_mode {passthrough|pcm}, updated_at
+  audio_output_id, audio_mode {passthrough|pcm},
+  idle_screen_mode {black|logo}, idle_logo_path,
+  idle_logo_scale {fit|fill}, updated_at
 
 Showing
   id, title, feature_id → MediaFile,
@@ -245,7 +247,12 @@ Small JSON API the playback service exposes; the backend is the only client.
 ```
 POST /playback/load     { showing_id, items: [{path, role, position}],
                           outputs: { video_outputs: [id...],
-                                     audio_output: id, audio_mode } }
+                                     audio_output: id, audio_mode,
+                                     idle_screen: {
+                                       mode: "black"|"logo",
+                                       logo_path: string|null,
+                                       scale: "fit"|"fill" } } }
+POST /playback/configure { outputs }   # apply output + idle screen without loading
 POST /playback/start
 POST /playback/pause
 POST /playback/resume
@@ -259,6 +266,14 @@ playback service on every `load`. Selecting multiple video outputs mirrors the
 feed (e.g. DeckLink SDI **and** a GPU HDMI output). The playback service
 enumerates available outputs via `GET /outputs` (DeckLink SDK + GPU in Phase 3;
 a fixed list in the mock).
+
+The Settings tab also uploads a single operator-supplied idle logo still. The
+backend validates it as exactly **3840x2160** and stores it under `/runtime`.
+When no trailer or feature is active, the playback service keeps ownership of
+the selected video outputs and renders either black or the logo. `scale=fit`
+preserves the whole image inside the current output raster; `scale=fill` covers
+the raster and crops if needed. If logo mode is selected but no logo exists, the
+backend sends black as the effective idle screen.
 
 #### Console vs. video output routing (host level)
 
@@ -317,6 +332,11 @@ on the playback service. Manual shuttle controls can override at any time.
   Phase 3 service uses it (and can still enumerate at runtime). Software decode
   is the fallback when no supported GPU is present.
 - **Output:** `-f decklink "<device name>"` muxer to the SDI card.
+- **Idle takeover:** outside active playback, the service keeps a low-cost
+  ffmpeg process attached to the selected video outputs so the projector never
+  falls back to a desktop/console/signal-loss state. Black uses `color=black`;
+  logo mode uses the uploaded still with `scale`/`pad` for fit or `scale`/`crop`
+  for fill, normalized to the active output mode.
 - **Playlist:** trailers then feature, played as an ordered sequence. Approach
   chosen during implementation: concat demuxer vs. sequential ffmpeg invocations
   managed by the service (sequential is simpler to pause/seek per-item; concat is

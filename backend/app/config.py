@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Hardware hints from deploy/discover.sh (informational; used by Phase 3).
     hardware_file: str = "/runtime/hardware.json"
 
+    # Runtime-managed assets such as the idle display logo.
+    runtime_dir: str = "/runtime"
+
     # Connectors reserved for the host's Linux console by deploy/console-routing.sh.
     # Used to warn when a playback video output collides with the text console.
     console_file: str = "/runtime/console.json"

@@ -118,5 +118,11 @@ class AppSettings(Base):
     audio_output_id: Mapped[str | None] = mapped_column(String, nullable=True)
     # Audio handling: "passthrough" (bitstream) or "pcm" (decode to PCM).
     audio_mode: Mapped[str] = mapped_column(String, default="passthrough")
+    # Idle screen while no trailer/feature is playing: "black" or "logo".
+    idle_screen_mode: Mapped[str] = mapped_column(String, default="black")
+    # Optional 3840x2160 operator-supplied still image for the playback outputs.
+    idle_logo_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Logo scaling: "fit" preserves the whole image, "fill" crops to cover.
+    idle_logo_scale: Mapped[str] = mapped_column(String, default="fit")
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
