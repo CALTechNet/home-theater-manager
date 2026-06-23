@@ -71,7 +71,9 @@ discover_gpus() {
     fi
   done < <(lspci -nn 2>/dev/null)
 
-  [ ${#gpu_objs[@]} -eq 0 ] && say "  No GPUs detected."
+  if [ ${#gpu_objs[@]} -eq 0 ]; then
+    say "  No GPUs detected."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -90,7 +92,9 @@ discover_outputs() {
     connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\"}")
     say "  Connector: $name ($status)"
   done
-  [ ${#connector_objs[@]} -eq 0 ] && say "  No DRM display connectors enumerated." || true
+  if [ ${#connector_objs[@]} -eq 0 ]; then
+    say "  No DRM display connectors enumerated."
+  fi
 
   if [ -r /proc/tty/driver/serial ]; then
     while IFS= read -r line; do
@@ -103,7 +107,9 @@ discover_outputs() {
       esac
     done < /proc/tty/driver/serial
   fi
-  [ ${#serial_objs[@]} -eq 0 ] && say "  No usable serial UART detected." || true
+  if [ ${#serial_objs[@]} -eq 0 ]; then
+    say "  No usable serial UART detected."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -124,7 +130,9 @@ discover_decklink() {
     has_decklink="true"
     say "  DeckLink driver devices present (/dev/blackmagic*)"
   fi
-  [ "$has_decklink" = "false" ] && say "  No Blackmagic DeckLink detected."
+  if [ "$has_decklink" = "false" ]; then
+    say "  No Blackmagic DeckLink detected."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -148,7 +156,9 @@ discover_printers() {
       found=1
     fi
   done < <(lsusb 2>/dev/null)
-  [ "$found" -eq 0 ] && say "  No USB thermal printer detected (network printers are configured by IP)."
+  if [ "$found" -eq 0 ]; then
+    say "  No USB thermal printer detected (network printers are configured by IP)."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -166,7 +176,9 @@ discover_audio() {
       say "  Audio: card $idx — $name"
     done < /proc/asound/cards
   fi
-  [ ${#audio_objs[@]} -eq 0 ] && say "  No ALSA audio cards enumerated."
+  if [ ${#audio_objs[@]} -eq 0 ]; then
+    say "  No ALSA audio cards enumerated."
+  fi
 }
 
 join_objs() { local IFS=,; echo "$*"; }
