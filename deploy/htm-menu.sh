@@ -20,6 +20,7 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "$SOURCE")"
 TTY="/dev/tty"
 
 have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
@@ -41,6 +42,14 @@ ensure_term() {
   echo "Terminal '${TERM:-unset}' cannot draw the TUI; set TERM=xterm-256color or run from an SSH/local console terminal."
   exit 1
 }
+require_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    return
+  fi
+
+  command -v sudo >/dev/null 2>&1 || { echo "Please run as root (sudo htm)."; exit 1; }
+  exec sudo -E "$SCRIPT_PATH" "$@"
+}
 wt() {
   # Keep the menu UI on /dev/tty while returning menu/form answers to callers.
   # See deploy/install.sh for details on why this redirection order is
@@ -55,6 +64,7 @@ require() {
   have_tty || { echo "No TTY available; run this in an interactive terminal."; exit 1; }
   command -v tput >/dev/null 2>&1 || { echo "tput not installed."; exit 1; }
   ensure_term
+  require_root "$@"
 }
 
 rediscover() {
@@ -191,5 +201,5 @@ main_menu() {
   clear
 }
 
-require
+require "$@"
 main_menu
