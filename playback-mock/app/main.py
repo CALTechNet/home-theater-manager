@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from .player import create_player
 
-app = FastAPI(title="Home Theater Playback", version="0.2.0")
+app = FastAPI(title="Home Theater Playback", version="1.0.0")
 player = create_player()
 
 
