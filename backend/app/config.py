@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     playback_url: str = "http://playback:9000"
     playback_timeout_s: float = 5.0
 
+    # IANA timezone the operator schedules in (e.g. "America/Chicago").
+    # scheduled_start values are naive local wall-clock times, so the scheduler
+    # must localize them in this zone to fire at the right moment. Empty falls
+    # back to the TZ env var, then the system local timezone.
+    timezone: str = ""
+
     # Tickets are generated as PDFs (receipt or full-page color) and printed from
     # the operator's workstation — no server-side printer driver. Default style.
     ticket_style: str = "receipt"       # receipt | fullpage
