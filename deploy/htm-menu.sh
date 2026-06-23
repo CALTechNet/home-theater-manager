@@ -23,6 +23,24 @@ INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TTY="/dev/tty"
 
 have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
+ensure_term() {
+  if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] &&
+     TERM="$TERM" tput clear >/dev/null 2>&1 &&
+     TERM="$TERM" tput cup 0 0 >/dev/null 2>&1; then
+    return
+  fi
+
+  for term in xterm-256color xterm linux vt100; do
+    if TERM="$term" tput clear >/dev/null 2>&1 &&
+       TERM="$term" tput cup 0 0 >/dev/null 2>&1; then
+      export TERM="$term"
+      return
+    fi
+  done
+
+  echo "Terminal '${TERM:-unset}' cannot draw the TUI; set TERM=xterm-256color or run from an SSH/local console terminal."
+  exit 1
+}
 wt() {
   # Keep the menu UI on /dev/tty while returning menu/form answers to callers.
   # See deploy/install.sh for details on why this redirection order is
@@ -35,6 +53,8 @@ pause() { wt --title "$1" --msgbox "$2" 20 72; }
 require() {
   command -v whiptail >/dev/null 2>&1 || { echo "whiptail not installed."; exit 1; }
   have_tty || { echo "No TTY available; run this in an interactive terminal."; exit 1; }
+  command -v tput >/dev/null 2>&1 || { echo "tput not installed."; exit 1; }
+  ensure_term
 }
 
 rediscover() {
