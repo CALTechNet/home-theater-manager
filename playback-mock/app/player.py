@@ -52,6 +52,8 @@ class OutputDevice:
             data["drm_connector"] = self.drm_connector
         if self.drm_device:
             data["drm_device"] = self.drm_device
+        if self.ffmpeg_args[:2] == ("-f", "alsa") and len(self.ffmpeg_args) >= 3:
+            data["alsa_device"] = self.ffmpeg_args[2]
         return data
 
 
@@ -79,12 +81,16 @@ def _devices_from_env(name: str, defaults: list[OutputDevice]) -> list[OutputDev
             dev_type = str(item.get("type", "")).strip()
             if not dev_id or not dev_name or not dev_type:
                 continue
+            ffmpeg_args = _tuple_args(item.get("ffmpeg_args"))
+            alsa_device = str(item.get("alsa_device", "")).strip()
+            if not ffmpeg_args and alsa_device:
+                ffmpeg_args = ("-f", "alsa", alsa_device)
             devices.append(
                 OutputDevice(
                     id=dev_id,
                     name=dev_name,
                     type=dev_type,
-                    ffmpeg_args=_tuple_args(item.get("ffmpeg_args")),
+                    ffmpeg_args=ffmpeg_args,
                     embedded_audio=bool(item.get("embedded_audio", False)),
                 )
             )
@@ -113,6 +119,17 @@ def _load_hardware_connectors() -> list[dict]:
         return []
     connectors = data.get("connectors")
     return [c for c in connectors if isinstance(c, dict)] if isinstance(connectors, list) else []
+
+
+def _load_hardware_audio_outputs() -> list[dict]:
+    """ALSA playback outputs discovered by deploy/discover.sh."""
+    path = os.getenv("HTM_HARDWARE_FILE", "/runtime/hardware.json")
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    outputs = data.get("audio_outputs")
+    return [a for a in outputs if isinstance(a, dict)] if isinstance(outputs, list) else []
 
 
 def _decklink_default() -> OutputDevice:
@@ -192,13 +209,53 @@ def _default_audio_outputs() -> list[OutputDevice]:
     ]
 
 
+def _discovered_audio_outputs() -> list[OutputDevice]:
+    devices: list[OutputDevice] = []
+    if os.getenv("HTM_HAS_DECKLINK", "").strip().lower() == "true":
+        devices.append(
+            OutputDevice(
+                id="sdi-embedded",
+                name="SDI embedded audio (DeckLink)",
+                type="sdi",
+                embedded_audio=True,
+            )
+        )
+
+    seen: set[str] = {d.id for d in devices}
+    for item in _load_hardware_audio_outputs():
+        dev_id = str(item.get("id", "")).strip()
+        alsa_device = str(item.get("alsa_device", "")).strip()
+        name = str(item.get("name", dev_id)).strip()
+        dev_type = str(item.get("type", "alsa")).strip() or "alsa"
+        if not dev_id or not alsa_device or dev_id in seen:
+            continue
+        card_name = str(item.get("card_name", "")).strip()
+        label = f"{name} ({alsa_device})"
+        if card_name and card_name.lower() not in name.lower():
+            label = f"{name} - {card_name} ({alsa_device})"
+        devices.append(
+            OutputDevice(
+                id=dev_id,
+                name=label,
+                type=dev_type,
+                ffmpeg_args=("-f", "alsa", alsa_device),
+            )
+        )
+        seen.add(dev_id)
+    return devices
+
+
+def _audio_outputs() -> list[OutputDevice]:
+    return _discovered_audio_outputs() or _default_audio_outputs()
+
+
 @dataclass
 class DeviceCatalog:
     video: list[OutputDevice] = field(default_factory=lambda: _devices_from_env(
         "HTM_VIDEO_OUTPUTS_JSON", _video_outputs()
     ))
     audio: list[OutputDevice] = field(default_factory=lambda: _devices_from_env(
-        "HTM_AUDIO_OUTPUTS_JSON", _default_audio_outputs()
+        "HTM_AUDIO_OUTPUTS_JSON", _audio_outputs()
     ))
 
     def video_by_id(self, ids: list[str]) -> list[OutputDevice]:

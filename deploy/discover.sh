@@ -19,6 +19,7 @@ for a in "$@"; do [ "$a" = "--quiet" ] && QUIET=1; done
 
 say() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*"; }
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+trim() { sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -169,6 +170,21 @@ discover_printers() {
 # Audio outputs
 # ---------------------------------------------------------------------------
 audio_objs=()
+audio_output_objs=()
+declare -A audio_card_names=()
+
+audio_type() {
+  local text; text="$(printf '%s' "$*" | tr 'A-Z' 'a-z')"
+  case "$text" in
+    *hdmi*) echo "hdmi" ;;
+    *displayport*|*"display port"*|*dp*) echo "displayport" ;;
+    *spdif*|*"s/pdif"*|*iec958*) echo "spdif" ;;
+    *usb*) echo "usb" ;;
+    *analog*|*alc*) echo "analog" ;;
+    *) echo "alsa" ;;
+  esac
+}
+
 discover_audio() {
   if [ -r /proc/asound/cards ]; then
     while IFS= read -r line; do
@@ -176,12 +192,34 @@ discover_audio() {
       local idx name
       idx="$(echo "$line" | awk '{print $1}')"
       name="$(echo "$line" | sed -E 's/^[ ]*[0-9]+ \[[^]]*\]: //')"
+      audio_card_names[$idx]="$name"
       audio_objs+=("{\"index\":$idx,\"name\":\"$(json_escape "$name")\"}")
       say "  Audio: card $idx — $name"
     done < /proc/asound/cards
   fi
+
+  if [ -r /proc/asound/pcm ]; then
+    while IFS= read -r line; do
+      echo "$line" | grep -q 'playback' || continue
+      local pair card device name desc card_name type alsa dev_id
+      pair="${line%%:*}"              # e.g. 00-03
+      card="$((10#${pair%-*}))"
+      device="$((10#${pair#*-}))"
+      name="$(echo "$line" | cut -d: -f2 | trim)"
+      desc="$(echo "$line" | cut -d: -f3 | trim)"
+      card_name="${audio_card_names[$card]:-card $card}"
+      type="$(audio_type "$name $desc $card_name")"
+      alsa="hw:$card,$device"
+      dev_id="alsa:$card,$device"
+      audio_output_objs+=("{\"id\":\"$dev_id\",\"name\":\"$(json_escape "$name")\",\"type\":\"$type\",\"card\":$card,\"device\":$device,\"alsa_device\":\"$alsa\",\"description\":\"$(json_escape "$desc")\",\"card_name\":\"$(json_escape "$card_name")\"}")
+      say "  Audio output: $name ($card_name, $alsa)"
+    done < /proc/asound/pcm
+  fi
   if [ ${#audio_objs[@]} -eq 0 ]; then
     say "  No ALSA audio cards enumerated."
+  fi
+  if [ ${#audio_output_objs[@]} -eq 0 ]; then
+    say "  No ALSA playback outputs enumerated."
   fi
 }
 
@@ -209,7 +247,8 @@ main() {
   "serial": [ $(join_objs "${serial_objs[@]:-}") ],
   "decklink": [ $(join_objs "${decklink_objs[@]:-}") ],
   "printers": [ $(join_objs "${printer_objs[@]:-}") ],
-  "audio": [ $(join_objs "${audio_objs[@]:-}") ]
+  "audio": [ $(join_objs "${audio_objs[@]:-}") ],
+  "audio_outputs": [ $(join_objs "${audio_output_objs[@]:-}") ]
 }
 EOF
 

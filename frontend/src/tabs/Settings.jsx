@@ -166,6 +166,11 @@ export default function Settings() {
               <span style={{ flex: 1 }}>
                 {o.name}
                 {typeBadge(o.type)}
+                {o.alsa_device && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    ALSA {o.alsa_device}
+                  </div>
+                )}
               </span>
             </label>
           ))}
@@ -275,6 +280,11 @@ export default function Settings() {
             ))}
             {(hardware.audio || []).map((a, i) => (
               <div key={i} className="muted">Audio — card {a.index}: {a.name}</div>
+            ))}
+            {(hardware.audio_outputs || []).map((a, i) => (
+              <div key={i} className="muted">
+                Audio output — {a.name} ({a.alsa_device})
+              </div>
             ))}
             <div className="muted" style={{ fontSize: 12 }}>
               Discovered {hardware.discovered_at}. Re-run with <code>sudo htm</code>.
