@@ -43,6 +43,7 @@ export const api = {
   scanMedia: () => req("POST", "/media/scan"),
   tagMedia: (id, body) => req("PATCH", `/media/${id}`, body),
   deleteMedia: (id) => req("DELETE", `/media/${id}`),
+  mediaStorage: () => req("GET", "/media/storage"),
 
   // showings
   listShowings: (start, end) => {

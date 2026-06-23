@@ -43,6 +43,13 @@ class ScanResult(BaseModel):
     updated: int
 
 
+class StorageOut(BaseModel):
+    total: int          # bytes
+    used: int           # bytes
+    free: int           # bytes
+    percent_used: float  # 0..100
+
+
 # ---- Showings --------------------------------------------------------------
 class ShowingItemIn(BaseModel):
     media_id: int

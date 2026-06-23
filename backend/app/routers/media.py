@@ -1,10 +1,13 @@
-"""Media library endpoints: list, tag, scan, delete."""
+"""Media library endpoints: list, tag, scan, storage, delete."""
+import shutil
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..database import get_db
 from ..models import MediaFile, Showing, ShowingItem
-from ..schemas import MediaFileOut, MediaTagIn, ScanResult
+from ..schemas import MediaFileOut, MediaTagIn, ScanResult, StorageOut
 from ..services.media_scan import scan_library
 
 router = APIRouter(prefix="/api/media", tags=["media"])
@@ -21,6 +24,20 @@ def list_media(kind: str | None = None, db: Session = Depends(get_db)):
 @router.post("/scan", response_model=ScanResult)
 def scan(db: Session = Depends(get_db)):
     return scan_library(db)
+
+
+@router.get("/storage", response_model=StorageOut)
+def storage():
+    """Disk usage of the media volume (where the library is mounted)."""
+    root = get_settings().media_root
+    try:
+        usage = shutil.disk_usage(root)
+    except OSError as e:
+        raise HTTPException(503, f"media storage unavailable: {e}")
+    percent = round(usage.used / usage.total * 100, 1) if usage.total else 0.0
+    return StorageOut(
+        total=usage.total, used=usage.used, free=usage.free, percent_used=percent
+    )
 
 
 @router.patch("/{media_id}", response_model=MediaFileOut)
