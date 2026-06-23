@@ -1,8 +1,8 @@
 # Home Theater Manager — management plane.
 #
-# Phase 1 runs the web UI, API, DB, and a MOCK playback service. The real
-# host-side playback service (GPU + DeckLink) is added in Phase 3 and replaces
-# the `playback` service here by pointing HTM_PLAYBACK_URL at the host.
+# Phase 1 runs the web UI, API, DB, and the playback control service in mock
+# mode. Set HTM_PLAYBACK_DRIVER=ffmpeg for the ffmpeg runner, typically on the
+# host with direct access to DeckLink/GPU/audio devices.
 #
 # Configuration is driven by a .env file (see .env.example).
 
@@ -31,11 +31,16 @@ services:
     expose:
       - "8000"
 
-  # MOCK playback service (Phase 1). Remove/replace in Phase 3.
+  # Playback control service. Defaults to mock mode; ffmpeg mode needs host
+  # hardware device access in real deployments.
   playback:
     build: ./playback-mock
-    image: htm-playback-mock
+    image: htm-playback
     restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
+      - ./runtime:/runtime:ro
     expose:
       - "9000"
 
