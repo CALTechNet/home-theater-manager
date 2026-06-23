@@ -5,6 +5,7 @@ import NowShowing from "./tabs/NowShowing.jsx";
 import Ticketing from "./tabs/Ticketing.jsx";
 import Settings from "./tabs/Settings.jsx";
 import HeaderClock from "./components/HeaderClock.jsx";
+import HeaderNowShowing from "./components/HeaderNowShowing.jsx";
 
 const TABS = [
   ["schedule", "Schedule"],
@@ -40,6 +41,7 @@ export default function App() {
           ))}
         </nav>
         <div className="topbar-right">
+          <HeaderNowShowing />
           <HeaderClock />
         </div>
       </header>
