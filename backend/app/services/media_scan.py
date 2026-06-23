@@ -10,7 +10,27 @@ from ..models import MediaFile
 
 settings = get_settings()
 
-VIDEO_EXTS = {".mkv", ".mp4", ".mov", ".m4v", ".ts", ".webm", ".avi"}
+VIDEO_EXTS = {
+    ".3g2",
+    ".3gp",
+    ".avi",
+    ".divx",
+    ".f4v",
+    ".flv",
+    ".m2ts",
+    ".m4v",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".mpeg",
+    ".mpg",
+    ".mts",
+    ".ogv",
+    ".ts",
+    ".vob",
+    ".webm",
+    ".wmv",
+}
 
 # Transfer characteristics that indicate HDR10 (PQ / SMPTE 2084).
 HDR_TRANSFERS = {"smpte2084", "arib-std-b67"}
@@ -167,8 +187,12 @@ def probe_metadata(path: str) -> dict:
     return meta
 
 
+def _is_video_file(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in VIDEO_EXTS
+
+
 def scan_library(db: Session) -> dict:
-    """Walk media_root, probe new/changed files, upsert MediaFile rows."""
+    """Walk every folder in media_root, probe video files, upsert MediaFile rows."""
     root = Path(settings.media_root)
     scanned = added = updated = 0
     if not root.exists():
@@ -177,7 +201,7 @@ def scan_library(db: Session) -> dict:
     existing = {m.path: m for m in db.query(MediaFile).all()}
 
     for p in sorted(root.rglob("*")):
-        if not p.is_file() or p.suffix.lower() not in VIDEO_EXTS:
+        if not _is_video_file(p):
             continue
         scanned += 1
         path_str = str(p)

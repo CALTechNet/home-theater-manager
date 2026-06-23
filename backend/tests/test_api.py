@@ -148,6 +148,42 @@ def test_audio_format_detection():
     assert _aspect_ratio({}, 3840, 1600) == "2.40:1"
 
 
+def test_media_scan_finds_videos_in_nested_folders(client, tmp_path, monkeypatch):
+    from app.database import SessionLocal
+    from app.services import media_scan
+
+    (tmp_path / "Movies" / "Feature").mkdir(parents=True)
+    (tmp_path / "Trailers").mkdir()
+    (tmp_path / "Movies" / "Feature" / "Nested Feature.MP4").write_bytes(b"video")
+    (tmp_path / "Trailers" / "teaser.m2ts").write_bytes(b"video")
+    (tmp_path / "not-video.txt").write_text("ignore me")
+
+    monkeypatch.setattr(media_scan.settings, "media_root", str(tmp_path))
+    monkeypatch.setattr(media_scan, "probe_metadata", lambda path: {
+        "duration_seconds": 1.0, "width": 1920, "height": 1080, "fps": 24.0,
+        "video_codec": "h264", "color_primaries": "", "transfer_characteristics": "",
+        "is_hdr10": False, "aspect_ratio": "16:9", "file_size": 5, "bitrate": 0,
+        "audio_codec": "", "audio_profile": "", "audio_channels": 0,
+        "audio_channel_layout": "", "audio_format": "", "audio_summary": "",
+    })
+
+    db = SessionLocal()
+    try:
+        db.query(MediaFile).delete()
+        db.commit()
+
+        result = media_scan.scan_library(db)
+
+        assert result == {"scanned": 2, "added": 2, "updated": 0}
+        paths = {m.path for m in db.query(MediaFile).all()}
+        assert paths == {
+            str(tmp_path / "Movies" / "Feature" / "Nested Feature.MP4"),
+            str(tmp_path / "Trailers" / "teaser.m2ts"),
+        }
+    finally:
+        db.close()
+
+
 def test_console_reserved_annotation(monkeypatch):
     """A connector reserved by the host console flags only the matching GPU
     output family; SDI and unrelated connectors are left selectable."""
