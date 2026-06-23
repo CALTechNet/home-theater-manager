@@ -1,0 +1,20 @@
+# GPU / KMS playback override.
+#
+# Grants the playback service direct access to the GPU DRM nodes so mpv
+# (--vo=drm) can drive a connected GPU output (HDMI / DisplayPort) with no X or
+# Wayland session. Use together with the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Requirements for video to actually appear on the projector connector:
+#   * HTM_PLAYBACK_DRIVER=ffmpeg in .env (mock renders nothing).
+#   * The projector's connector must be freed from the Linux text console, e.g.
+#       sudo bash deploy/console-routing.sh --video-output DP-1 --apply   # then reboot
+#     otherwise the kernel console keeps the connector and mpv can't modeset it.
+#
+# The playback container runs as root, so it can open the root-owned /dev/dri
+# nodes without extra group membership.
+services:
+  playback:
+    devices:
+      - "/dev/dri:/dev/dri"

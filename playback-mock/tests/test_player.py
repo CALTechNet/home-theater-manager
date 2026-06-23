@@ -1,3 +1,6 @@
+import json
+
+from app import player as player_mod
 from app.player import DeviceCatalog, FfmpegPlayer, OutputDevice, SimulatedPlayer
 
 
@@ -128,6 +131,132 @@ def test_simulated_player_keeps_idle_screen_after_stop():
 
     assert snap["showing_id"] == 10
     assert player.snapshot()["idle_screen"] == outputs["idle_screen"]
+
+
+def _kms_catalog():
+    return DeviceCatalog(
+        video=[
+            OutputDevice(
+                id="gpu:DP-1", name="GPU DP-1", type="displayport",
+                drm_connector="DP-1", drm_device="/dev/dri/card1",
+            ),
+        ],
+        audio=[
+            OutputDevice(id="hdmi-0", name="HDMI", type="hdmi",
+                         ffmpeg_args=("-f", "alsa", "hw:0,3")),
+        ],
+    )
+
+
+def test_connector_type_mapping():
+    assert player_mod._connector_type("HDMI-A-1") == "hdmi"
+    assert player_mod._connector_type("DP-1") == "displayport"
+    assert player_mod._connector_type("VGA-1") == "vga"
+    assert player_mod._connector_type("eDP-1") == "edp"
+
+
+def test_discovers_video_outputs_from_hardware_json(tmp_path, monkeypatch):
+    hw = tmp_path / "hardware.json"
+    hw.write_text(json.dumps({"connectors": [
+        {"name": "DP-1", "status": "connected", "card": "card1", "device": "/dev/dri/card1"},
+        {"name": "HDMI-A-1", "status": "disconnected", "card": "card1"},
+    ]}))
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(hw))
+    monkeypatch.delenv("HTM_HAS_DECKLINK", raising=False)
+
+    by_id = {d.id: d for d in player_mod._discovered_video_outputs()}
+    assert by_id["gpu:DP-1"].type == "displayport"
+    assert by_id["gpu:DP-1"].drm_connector == "DP-1"
+    assert by_id["gpu:DP-1"].drm_device == "/dev/dri/card1"
+    assert by_id["gpu:DP-1"].is_kms
+    # Disconnected connectors are still listed (label notes the state); device
+    # falls back to the card path when an explicit one isn't recorded.
+    assert "disconnected" in by_id["gpu:HDMI-A-1"].name
+    assert by_id["gpu:HDMI-A-1"].drm_device == "/dev/dri/card1"
+
+
+def test_discovery_includes_decklink_when_present(tmp_path, monkeypatch):
+    hw = tmp_path / "hardware.json"
+    hw.write_text(json.dumps({"connectors": [{"name": "DP-1", "status": "connected", "card": "card1"}]}))
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(hw))
+    monkeypatch.setenv("HTM_HAS_DECKLINK", "true")
+    ids = [d.id for d in player_mod._discovered_video_outputs()]
+    assert "decklink:0" in ids and "gpu:DP-1" in ids
+
+
+def test_kms_media_command_uses_mpv_drm():
+    player = FfmpegPlayer(catalog=_kms_catalog(), ffmpeg_bin="ffmpeg")
+    cmds = player.media_commands("/mnt/media/movie.mkv", {
+        "video_outputs": ["gpu:DP-1"], "audio_output": "hdmi-0", "audio_mode": "pcm",
+    })
+    assert len(cmds) == 1
+    cmd = cmds[0]
+    assert cmd[0] == "mpv"
+    assert "--vo=drm" in cmd
+    assert "--drm-connector=DP-1" in cmd
+    assert "--drm-device=/dev/dri/card1" in cmd
+    assert "--audio-device=alsa/hw:0,3" in cmd
+    assert cmd[-2:] == ["--", "/mnt/media/movie.mkv"]
+    assert not any("audio-spdif" in a for a in cmd)  # pcm decodes, no bitstream
+
+
+def test_kms_media_command_passthrough_adds_spdif():
+    player = FfmpegPlayer(catalog=_kms_catalog(), ffmpeg_bin="ffmpeg")
+    cmds = player.media_commands("/m/x.mkv", {"video_outputs": ["gpu:DP-1"]})  # default passthrough
+    assert any(a.startswith("--audio-spdif=") for a in cmds[0])
+
+
+def test_kms_idle_black_command():
+    player = FfmpegPlayer(catalog=_kms_catalog(), ffmpeg_bin="ffmpeg")
+    cmds = player.idle_commands({
+        "video_outputs": ["gpu:DP-1"],
+        "idle_screen": {"mode": "black", "logo_path": None, "scale": "fit"},
+    })
+    assert len(cmds) == 1
+    cmd = cmds[0]
+    assert cmd[0] == "mpv"
+    assert "--idle=yes" in cmd and "--force-window=yes" in cmd and "--no-audio" in cmd
+
+
+def test_kms_idle_logo_command(tmp_path):
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"x")
+    player = FfmpegPlayer(catalog=_kms_catalog(), ffmpeg_bin="ffmpeg")
+    cmds = player.idle_commands({
+        "video_outputs": ["gpu:DP-1"],
+        "idle_screen": {"mode": "logo", "logo_path": str(logo), "scale": "fill"},
+    })
+    cmd = cmds[0]
+    assert cmd[-2:] == ["--", str(logo)]
+    assert "--panscan=1.0" in cmd  # fill crops to cover
+    assert "--loop-file=inf" in cmd
+
+
+def test_media_commands_mix_ffmpeg_and_mpv():
+    catalog = DeviceCatalog(
+        video=[
+            OutputDevice(id="decklink:0", name="SDI", type="sdi",
+                         ffmpeg_args=("-f", "decklink", "SDI"), embedded_audio=True),
+            OutputDevice(id="gpu:DP-1", name="DP", type="displayport",
+                         drm_connector="DP-1", drm_device="/dev/dri/card1"),
+        ],
+        audio=[OutputDevice(id="sdi-embedded", name="SDI a", type="sdi", embedded_audio=True)],
+    )
+    player = FfmpegPlayer(catalog=catalog, ffmpeg_bin="ffmpeg")
+    cmds = player.media_commands("/m/x.mkv", {
+        "video_outputs": ["decklink:0", "gpu:DP-1"],
+        "audio_output": "sdi-embedded", "audio_mode": "pcm",
+    })
+    assert len(cmds) == 2
+    assert cmds[0][0] == "ffmpeg" and "decklink" in cmds[0]
+    assert "DP-1" not in cmds[0]  # KMS device not handled by ffmpeg
+    assert cmds[1][0] == "mpv" and "--drm-connector=DP-1" in cmds[1]
+
+
+def test_media_commands_omit_ffmpeg_when_only_kms():
+    player = FfmpegPlayer(catalog=_kms_catalog(), ffmpeg_bin="ffmpeg")
+    cmds = player.media_commands("/m/x.mkv", {"video_outputs": ["gpu:DP-1"]})
+    assert len(cmds) == 1 and cmds[0][0] == "mpv"
 
 
 def test_env_catalog_overrides_devices(monkeypatch):
