@@ -42,6 +42,7 @@ export const api = {
   listMedia: (kind) => req("GET", `/media${kind ? `?kind=${kind}` : ""}`),
   scanMedia: () => req("POST", "/media/scan"),
   tagMedia: (id, body) => req("PATCH", `/media/${id}`, body),
+  deleteMedia: (id) => req("DELETE", `/media/${id}`),
 
   // showings
   listShowings: (start, end) => {
