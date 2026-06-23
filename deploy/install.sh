@@ -279,6 +279,29 @@ run_cli() {
 }
 
 # ---------------------------------------------------------------------------
+# Playback driver selection
+# ---------------------------------------------------------------------------
+# Pick the real ffmpeg/mpv runner when the host has a usable GPU render node or
+# a DeckLink card; otherwise fall back to the mock simulator. Honor an explicit
+# HTM_PLAYBACK_DRIVER from the environment. USE_GPU_COMPOSE adds the GPU DRM
+# nodes (docker-compose.gpu.yml) so mpv --vo=drm can drive a GPU connector.
+USE_GPU_COMPOSE=0
+detect_playback() {
+  local default="mock"
+  if ls /dev/dri/renderD* >/dev/null 2>&1; then
+    default="ffmpeg"
+    USE_GPU_COMPOSE=1
+  elif [ "${HTM_HAS_DECKLINK:-false}" = "true" ]; then
+    default="ffmpeg"
+  fi
+  HTM_PLAYBACK_DRIVER="${HTM_PLAYBACK_DRIVER:-$default}"
+  # No point attaching GPU nodes if the operator forced the mock driver.
+  [ "$HTM_PLAYBACK_DRIVER" = "ffmpeg" ] || USE_GPU_COMPOSE=0
+  export HTM_PLAYBACK_DRIVER
+  log "Playback driver: $HTM_PLAYBACK_DRIVER (GPU DRM access: $([ "$USE_GPU_COMPOSE" -eq 1 ] && echo yes || echo no))"
+}
+
+# ---------------------------------------------------------------------------
 # .env generation
 # ---------------------------------------------------------------------------
 write_env() {
@@ -302,7 +325,8 @@ HTM_DATABASE_URL=sqlite:////data/htm.db
 HTM_MEDIA_HOST_PATH=${HTM_MEDIA_HOST_PATH}
 HTM_MEDIA_ROOT=/mnt/media
 HTM_PLAYBACK_URL=http://playback:9000
-HTM_PLAYBACK_DRIVER=mock
+# mock = in-memory simulator (no real output); ffmpeg = real ffmpeg/mpv runner.
+HTM_PLAYBACK_DRIVER=${HTM_PLAYBACK_DRIVER:-mock}
 HTM_THEATER_NAME=${HTM_THEATER_NAME}
 HTM_SEAT_MAX_ROW=${HTM_SEAT_MAX_ROW}
 HTM_SEAT_MAX_NUMBER=${HTM_SEAT_MAX_NUMBER}
@@ -313,6 +337,14 @@ HTM_GPU_VENDOR=${HTM_GPU_VENDOR:-Unknown}
 HTM_HWACCEL=${HTM_HWACCEL:-none}
 HTM_HAS_DECKLINK=${HTM_HAS_DECKLINK:-false}
 EOF
+  if [ "${USE_GPU_COMPOSE:-0}" -eq 1 ]; then
+    # COMPOSE_FILE makes every `docker compose` command (deploy, htm menu, manual)
+    # include the GPU override that maps /dev/dri into the playback container.
+    {
+      echo "# GPU/KMS playback: attach DRM nodes for mpv --vo=drm."
+      echo "COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml"
+    } >> "$env_file"
+  fi
   # Ensure the media path exists so the read-only mount doesn't fail.
   mkdir -p "$HTM_MEDIA_HOST_PATH" 2>/dev/null || warn "Could not create $HTM_MEDIA_HOST_PATH (mount it before first scan)."
   ok ".env written."
@@ -323,7 +355,9 @@ EOF
 # ---------------------------------------------------------------------------
 deploy() {
   log "Building and starting containers (this may take a few minutes)..."
-  ( cd "$INSTALL_DIR" && docker compose up -d --build )
+  local -a files=(-f docker-compose.yml)
+  [ "${USE_GPU_COMPOSE:-0}" -eq 1 ] && files+=(-f docker-compose.gpu.yml)
+  ( cd "$INSTALL_DIR" && docker compose "${files[@]}" up -d --build )
   ok "Stack is up."
 }
 
@@ -355,8 +389,25 @@ reach (network, USB, thermal, or a normal 8.5x11 color printer) in the print
 dialog. The server only outputs to the projector + audio.
 
 Next: open the Media tab and click "Scan library" to index your files.
-NOTE: Phase 1 uses a MOCK playback engine. Real GPU/DeckLink output is Phase 3.
+
+Playback driver: ${HTM_PLAYBACK_DRIVER}.
 EOF
+  if [ "${HTM_PLAYBACK_DRIVER}" = "ffmpeg" ] && [ "${USE_GPU_COMPOSE:-0}" -eq 1 ]; then
+    cat <<EOF
+GPU output is enabled (mpv --vo=drm drives a GPU connector). For video to reach
+the projector, free that connector from the Linux text console, then reboot:
+  sudo bash $INSTALL_DIR/deploy/console-routing.sh --list
+  sudo bash $INSTALL_DIR/deploy/console-routing.sh --video-output <CONNECTOR> --apply
+Then select that output in Settings. The idle screen (black or logo) shows
+whenever no show is playing; the show plays when you start it.
+EOF
+  elif [ "${HTM_PLAYBACK_DRIVER}" = "mock" ]; then
+    cat <<EOF
+NOTE: running the MOCK playback engine — it simulates state but produces no real
+video. Set HTM_PLAYBACK_DRIVER=ffmpeg in $INSTALL_DIR/.env (GPU or DeckLink
+required) and re-run to enable real output.
+EOF
+  fi
 }
 
 main() {
@@ -369,6 +420,7 @@ main() {
   install_htm_command
   run_cli
   maybe_install_decklink
+  detect_playback
   write_env
   deploy
   print_done

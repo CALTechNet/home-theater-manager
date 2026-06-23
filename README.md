@@ -5,10 +5,11 @@ trailer + feature playlists, play them to a projector, and print novelty tickets
 on an Epson thermal printer — all from a web UI on port 443.
 
 > **Status: Phase 1+2/3 bridge.** The full web app, API, database, and default
-> **mock** playback engine are runnable today. The playback service also has an
-> ffmpeg runner that consumes the selected video/audio outputs and idle screen;
-> real GPU + Blackmagic SDI deployments still need host hardware validation — see
-> [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> **mock** playback engine are runnable today. The playback service also has a
+> real runner — **ffmpeg** for DeckLink/SDI and **mpv `--vo=drm`** for GPU/KMS
+> connectors — that consumes the selected video/audio outputs and idle screen;
+> GPU/SDI deployments still need on-hardware validation of the actual output —
+> see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
@@ -131,21 +132,35 @@ running the browser** — so they work with any printer that machine can reach
 no printer driver; its only outputs are the projector (SDI) and audio. Choose the
 style per print in the Ticketing tab, or set the default with `HTM_TICKET_STYLE`.
 
-### ffmpeg playback runner
+### Real playback runner (ffmpeg + mpv)
 
 The playback service defaults to `HTM_PLAYBACK_DRIVER=mock` so the app remains
-demoable without hardware. Set `HTM_PLAYBACK_DRIVER=ffmpeg` for real playback.
-The runner uses the Settings tab payload on every `load`/`configure`:
+demoable without hardware. Set `HTM_PLAYBACK_DRIVER=ffmpeg` for real playback
+(the installer does this automatically when it detects a GPU render node or a
+DeckLink card). The runner uses the Settings tab payload on every
+`load`/`configure`:
 
-- `video_outputs` becomes one ffmpeg output group per selected target.
-- `audio_output` is embedded into DeckLink/SDI when `sdi-embedded` is selected,
-  or routed as a separate ffmpeg audio output when the selected device has
-  `ffmpeg_args`.
-- `audio_mode=pcm` emits PCM audio; `passthrough` requests stream copy.
-- `idle_screen` starts a looping ffmpeg process with either black video or the
-  uploaded 3840x2160 logo while no trailer/feature is active.
+- **Video outputs are auto-discovered** from the real DRM connectors in
+  `runtime/hardware.json` (e.g. `gpu:DP-1`, `gpu:HDMI-A-1`, `gpu:VGA-1`), so the
+  Settings list reflects the actual hardware. DeckLink/SDI is added when present.
+- **GPU/KMS connectors are driven by `mpv --vo=drm`** (targeting the connector +
+  card node), so output works on modern systems that have no `/dev/fb0`.
+  **DeckLink/SDI** continues to use ffmpeg. They can run side by side.
+- `audio_output` is embedded into DeckLink/SDI when `sdi-embedded` is selected;
+  for GPU outputs mpv plays the audio (mapped to the selected ALSA device, or the
+  default HDMI/DP audio). `audio_mode=passthrough` bitstreams (mpv `--audio-spdif`
+  / ffmpeg stream copy); `pcm` decodes.
+- `idle_screen` shows either a **black screen** or the uploaded **3840×2160 logo**
+  on the selected outputs whenever no trailer/feature is playing; the show plays
+  when started.
 
-Exact host device targets can be provided with JSON:
+**GPU output requires** (1) the playback container to have the GPU DRM nodes —
+use the override `docker compose -f docker-compose.yml -f docker-compose.gpu.yml
+up -d --build` (the installer wires this via `COMPOSE_FILE`), and (2) the
+projector's connector freed from the Linux text console
+(`deploy/console-routing.sh --video-output <CONNECTOR> --apply`, then reboot).
+
+Exact host device targets can still be forced with JSON:
 
 ```bash
 HTM_PLAYBACK_DRIVER=ffmpeg

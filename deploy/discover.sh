@@ -85,12 +85,16 @@ connector_objs=()
 serial_objs=()
 discover_outputs() {
   local d name status
+  local base card device
   for d in /sys/class/drm/card*-*/; do
     [ -e "$d/status" ] || continue
-    name="$(basename "$d")"; name="${name#card*-}"
+    base="$(basename "$d")"          # e.g. card1-DP-1
+    card="${base%%-*}"               # card1
+    name="${base#*-}"                # DP-1  (connector name for video=/mpv)
+    device="/dev/dri/${card}"        # KMS node mpv --drm-device targets
     status="$(cat "$d/status" 2>/dev/null || echo unknown)"
-    connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\"}")
-    say "  Connector: $name ($status)"
+    connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\",\"card\":\"$(json_escape "$card")\",\"device\":\"$(json_escape "$device")\"}")
+    say "  Connector: $name ($status) [$device]"
   done
   if [ ${#connector_objs[@]} -eq 0 ]; then
     say "  No DRM display connectors enumerated."
