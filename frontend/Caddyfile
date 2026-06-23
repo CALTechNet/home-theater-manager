@@ -1,7 +1,19 @@
 # Serves the SPA on :443 with an internal (self-signed) certificate by default.
 # To use a real certificate, replace `tls internal` with your cert/key paths,
 # or set an email + domain for automatic ACME. See README "TLS".
-:443 {
+{
+	# Some clients omit SNI when browsing by raw IP address. Use the installer's
+	# LAN IP/hostname default so Caddy can still choose a certificate.
+	default_sni {$HTM_TLS_DEFAULT_SNI:localhost}
+
+	# Keep browser access on TCP TLS. HTTP/3 uses UDP and can fail opaquely on
+	# some LAN/firewall setups, especially with self-signed internal certs.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$HTM_HTTPS_SITE_ADDRS:https://localhost:443} {
 	tls internal
 
 	# API goes to the backend service.
