@@ -96,7 +96,7 @@ export default function Ticketing({ initialShowingId }) {
               <div className="seatgrid" style={{ gridTemplateColumns: `repeat(${grid.numbers.length}, auto)` }}>
                 {grid.rows.flatMap((row) =>
                   grid.numbers.map((n) => {
-                    const code = `${n}${row}`;
+                    const code = `${row}${n}`;
                     return (
                       <button
                         key={code}
