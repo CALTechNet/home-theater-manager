@@ -47,6 +47,7 @@ nav.tabs button.active { background: var(--panel-2); color: var(--ink); }
 .topbar-clock { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: 0.5px; }
 
 main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+main.main-wide { max-width: min(1600px, calc(100vw - 24px)); }
 
 button.btn {
   background: var(--accent);
@@ -121,6 +122,32 @@ input, select {
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
 th { color: var(--muted); font-weight: 500; }
+.media-table-card { padding: 0; overflow-x: auto; }
+.media-table { min-width: 1320px; table-layout: fixed; }
+.media-table th, .media-table td { vertical-align: top; }
+.media-col-title { width: 30%; }
+.media-col-type { width: 86px; }
+.media-col-duration { width: 88px; }
+.media-col-resolution { width: 106px; }
+.media-col-aspect { width: 76px; }
+.media-col-codec { width: 86px; }
+.media-col-hdr { width: 70px; }
+.media-col-audio { width: 180px; }
+.media-col-size { width: 86px; }
+.media-col-bitrate { width: 92px; }
+.media-col-actions { width: 220px; }
+.media-title-cell b,
+.media-path,
+.media-audio {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.media-path { font-size: 12px; }
+.media-action-row { justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
+.media-actions .btn { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
 .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--panel-2); }
 .badge.feature { color: var(--accent); }
 .badge.trailer { color: var(--accent-2); }
