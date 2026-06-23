@@ -43,7 +43,7 @@ export default function App() {
           <HeaderClock />
         </div>
       </header>
-      <main>
+      <main className={tab === "media" ? "main-wide" : undefined}>
         {tab === "schedule" && <Schedule onPrintTickets={goTicketing} />}
         {tab === "media" && <Media />}
         {tab === "now" && <NowShowing />}

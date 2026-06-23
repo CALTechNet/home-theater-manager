@@ -47,7 +47,7 @@ export default function Media() {
   }
 
   return (
-    <>
+    <div className="media-page">
       {storage && <StorageBar storage={storage} />}
 
       <div className="spread" style={{ marginBottom: 16 }}>
@@ -59,8 +59,21 @@ export default function Media() {
       {msg && <p className="ok">{msg}</p>}
       {error && <p className="error">{error}</p>}
 
-      <div className="card">
-        <table>
+      <div className="card media-table-card">
+        <table className="media-table">
+          <colgroup>
+            <col className="media-col-title" />
+            <col className="media-col-type" />
+            <col className="media-col-duration" />
+            <col className="media-col-resolution" />
+            <col className="media-col-aspect" />
+            <col className="media-col-codec" />
+            <col className="media-col-hdr" />
+            <col className="media-col-audio" />
+            <col className="media-col-size" />
+            <col className="media-col-bitrate" />
+            <col className="media-col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th>Title</th>
@@ -79,9 +92,9 @@ export default function Media() {
           <tbody>
             {media.map((m) => (
               <tr key={m.id}>
-                <td>
+                <td className="media-title-cell">
                   <b>{m.title}</b>
-                  <div className="muted" style={{ fontSize: 12 }}>{m.path}</div>
+                  <div className="muted media-path">{m.path}</div>
                 </td>
                 <td><span className={`badge ${m.kind}`}>{m.kind}</span></td>
                 <td>{Math.round(m.duration_seconds / 60)} min</td>
@@ -89,11 +102,11 @@ export default function Media() {
                 <td>{m.aspect_ratio || "—"}</td>
                 <td>{m.video_codec}</td>
                 <td>{m.is_hdr10 ? <span className="badge hdr">HDR10</span> : <span className="muted">SDR</span>}</td>
-                <td className="muted">{m.audio_format || m.audio_summary}</td>
+                <td className="muted media-audio">{m.audio_format || m.audio_summary}</td>
                 <td>{fmtSize(m.file_size)}</td>
                 <td>{fmtBitrate(m.bitrate)}</td>
-                <td>
-                  <div className="row">
+                <td className="media-actions">
+                  <div className="row media-action-row">
                     <button
                       className="btn secondary"
                       onClick={() => setKind(m, m.kind === "feature" ? "trailer" : "feature")}
@@ -113,7 +126,7 @@ export default function Media() {
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   );
 }
 
