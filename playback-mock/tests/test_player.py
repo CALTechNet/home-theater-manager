@@ -261,6 +261,28 @@ def test_device_catalog_uses_discovered_audio_outputs(tmp_path, monkeypatch):
     }]
 
 
+def test_simulated_player_reload_outputs_rebuilds_catalog(tmp_path, monkeypatch):
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    first.write_text(json.dumps({"audio_outputs": [{
+        "id": "alsa:0,3", "name": "HDMI 0", "type": "hdmi", "alsa_device": "hw:0,3",
+    }]}))
+    second.write_text(json.dumps({"audio_outputs": [{
+        "id": "alsa:2,0", "name": "USB Audio", "type": "usb", "alsa_device": "hw:2,0",
+    }]}))
+    monkeypatch.delenv("HTM_AUDIO_OUTPUTS_JSON", raising=False)
+    monkeypatch.delenv("HTM_VIDEO_OUTPUTS_JSON", raising=False)
+    monkeypatch.delenv("HTM_HAS_DECKLINK", raising=False)
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(first))
+    player = SimulatedPlayer()
+
+    assert player.outputs()["audio"][0]["id"] == "alsa:0,3"
+
+    monkeypatch.setenv("HTM_HARDWARE_FILE", str(second))
+
+    assert player.reload_outputs()["audio"][0]["id"] == "alsa:2,0"
+
+
 def test_discovery_includes_decklink_when_present(tmp_path, monkeypatch):
     hw = tmp_path / "hardware.json"
     hw.write_text(json.dumps({"connectors": [{"name": "DP-1", "status": "connected", "card": "card1"}]}))

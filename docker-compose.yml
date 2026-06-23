@@ -18,15 +18,25 @@ services:
       - backend
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: htm-backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      HTM_SYS_DRM_DIR: /host/sys/class/drm
+      HTM_PROC_ASOUND_DIR: /host/proc/asound
+      HTM_PROC_TTY_SERIAL_FILE: /host/proc/tty/driver/serial
     volumes:
       - htm-data:/data
       - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
       # Hardware discovery results (deploy/discover.sh) shown in the Settings tab.
-      - ./runtime:/runtime:ro
+      # Backend writes this when Settings -> Re-discover is clicked.
+      - ./runtime:/runtime
+      # Host hardware views used by in-app rediscovery.
+      - /sys:/host/sys:ro
+      - /proc:/host/proc:ro
     # Backend is reached only through Caddy; no host port needed.
     expose:
       - "8000"

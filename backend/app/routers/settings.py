@@ -1,5 +1,6 @@
 """Settings endpoints: output routing, available devices, detected hardware."""
 import json
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -175,6 +176,38 @@ def _annotate_display_connectors(outputs: dict) -> dict:
     return outputs
 
 
+def _discovery_outdir() -> Path:
+    return Path(app_settings.hardware_file).parent
+
+
+def _run_hardware_discovery() -> dict:
+    script = Path(app_settings.hardware_discovery_script)
+    outdir = _discovery_outdir()
+    if not script.exists():
+        raise HTTPException(501, f"hardware discovery script not available at {script}")
+    outdir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            ["bash", str(script), str(outdir), "--quiet"],
+            text=True,
+            capture_output=True,
+            timeout=app_settings.hardware_discovery_timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise HTTPException(504, "hardware discovery timed out") from e
+    except OSError as e:
+        raise HTTPException(500, f"could not run hardware discovery: {e}") from e
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "hardware discovery failed").strip()
+        raise HTTPException(500, detail)
+    try:
+        playback_client.reload_outputs()
+    except PlaybackUnavailable:
+        pass
+    return detected_hardware()
+
+
 @router.get("/outputs", response_model=OutputsOut)
 def list_outputs():
     """Discover available outputs from the playback service (SDI + GPU + audio).
@@ -200,3 +233,9 @@ def detected_hardware():
         return data
     except (OSError, json.JSONDecodeError):
         return {"available": False}
+
+
+@router.post("/hardware/discover")
+def rediscover_hardware():
+    """Re-run hardware discovery after hot-plugging displays or audio devices."""
+    return _run_hardware_discovery()

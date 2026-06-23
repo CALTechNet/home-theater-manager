@@ -55,6 +55,11 @@ def outputs() -> dict:
     return _get("/outputs")
 
 
+def reload_outputs() -> dict:
+    """Ask playback to rebuild its output catalog after hardware discovery."""
+    return _post("/outputs/reload")
+
+
 def start() -> dict:
     return _post("/playback/start")
 

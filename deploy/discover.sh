@@ -17,6 +17,11 @@ QUIET=0
 for a in "$@"; do [ "$a" = "--quiet" ] && QUIET=1; done
 [ -d "$OUTDIR" ] || OUTDIR="."
 
+SYS_DRM_DIR="${HTM_SYS_DRM_DIR:-/sys/class/drm}"
+DEV_DRI_DIR="${HTM_DEV_DRI_DIR:-/dev/dri}"
+PROC_ASOUND_DIR="${HTM_PROC_ASOUND_DIR:-/proc/asound}"
+PROC_TTY_SERIAL_FILE="${HTM_PROC_TTY_SERIAL_FILE:-/proc/tty/driver/serial}"
+
 say() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*"; }
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 trim() { sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
@@ -43,7 +48,7 @@ classify_gpu() {
 discover_gpus() {
   have lspci || { say "  (lspci not available — install pciutils for GPU detection)"; return; }
   local has_dri="false"
-  ls /dev/dri/renderD* >/dev/null 2>&1 && has_dri="true"
+  ls "$DEV_DRI_DIR"/renderD* >/dev/null 2>&1 && has_dri="true"
 
   while IFS= read -r line; do
     # Only display-class devices.
@@ -87,7 +92,7 @@ serial_objs=()
 discover_outputs() {
   local d name status
   local base card device
-  for d in /sys/class/drm/card*-*/; do
+  for d in "$SYS_DRM_DIR"/card*-*/; do
     [ -e "$d/status" ] || continue
     base="$(basename "$d")"          # e.g. card1-DP-1
     card="${base%%-*}"               # card1
@@ -101,7 +106,7 @@ discover_outputs() {
     say "  No DRM display connectors enumerated."
   fi
 
-  if [ -r /proc/tty/driver/serial ]; then
+  if [ -r "$PROC_TTY_SERIAL_FILE" ]; then
     while IFS= read -r line; do
       case "$line" in
         [0-9]*:\ uart:*)
@@ -110,7 +115,7 @@ discover_outputs() {
           serial_objs+=("{\"port\":\"$port\"}")
           say "  Serial: $port" ;;
       esac
-    done < /proc/tty/driver/serial
+    done < "$PROC_TTY_SERIAL_FILE"
   fi
   if [ ${#serial_objs[@]} -eq 0 ]; then
     say "  No usable serial UART detected."
@@ -186,7 +191,7 @@ audio_type() {
 }
 
 discover_audio() {
-  if [ -r /proc/asound/cards ]; then
+  if [ -r "$PROC_ASOUND_DIR/cards" ]; then
     while IFS= read -r line; do
       echo "$line" | grep -qE '^[ ]*[0-9]+ ' || continue
       local idx name
@@ -195,10 +200,10 @@ discover_audio() {
       audio_card_names[$idx]="$name"
       audio_objs+=("{\"index\":$idx,\"name\":\"$(json_escape "$name")\"}")
       say "  Audio: card $idx — $name"
-    done < /proc/asound/cards
+    done < "$PROC_ASOUND_DIR/cards"
   fi
 
-  if [ -r /proc/asound/pcm ]; then
+  if [ -r "$PROC_ASOUND_DIR/pcm" ]; then
     while IFS= read -r line; do
       echo "$line" | grep -q 'playback' || continue
       local pair card device name desc card_name type alsa dev_id
@@ -213,7 +218,7 @@ discover_audio() {
       dev_id="alsa:$card,$device"
       audio_output_objs+=("{\"id\":\"$dev_id\",\"name\":\"$(json_escape "$name")\",\"type\":\"$type\",\"card\":$card,\"device\":$device,\"alsa_device\":\"$alsa\",\"description\":\"$(json_escape "$desc")\",\"card_name\":\"$(json_escape "$card_name")\"}")
       say "  Audio output: $name ($card_name, $alsa)"
-    done < /proc/asound/pcm
+    done < "$PROC_ASOUND_DIR/pcm"
   fi
   if [ ${#audio_objs[@]} -eq 0 ]; then
     say "  No ALSA audio cards enumerated."

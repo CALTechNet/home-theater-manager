@@ -225,6 +225,11 @@ Re-run discovery or manage the stack any time with the CLI menu:
 sudo htm
 ```
 
+You can also use **Settings → Detected hardware → Re-discover** from the web UI
+after unplugging or replugging a display, HDMI/DP audio endpoint, USB audio
+interface, DeckLink card, or printer. The button rewrites `runtime/hardware.json`
+and asks the playback service to reload its output list.
+
 Menu options: **re-discover hardware** (after swapping a GPU/DeckLink/printer),
 **console / video output routing**, install the DeckLink driver, set default
 ticket style, status, logs, start/stop/restart, and update.

@@ -103,6 +103,11 @@ def outputs():
     return player.outputs()
 
 
+@app.post("/outputs/reload")
+def reload_outputs():
+    return player.reload_outputs()
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

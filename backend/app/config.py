@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     # Hardware hints from deploy/discover.sh (informational; used by Phase 3).
     hardware_file: str = "/runtime/hardware.json"
+    hardware_discovery_script: str = "/app/deploy/discover.sh"
+    hardware_discovery_timeout_s: float = 45.0
 
     # Runtime-managed assets such as the idle display logo.
     runtime_dir: str = "/runtime"
