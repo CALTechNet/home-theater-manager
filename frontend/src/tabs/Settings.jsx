@@ -12,6 +12,7 @@ export default function Settings() {
   const [idleScale, setIdleScale] = useState("fit");
   const [idleLogoPath, setIdleLogoPath] = useState("");
   const [logoFile, setLogoFile] = useState(null);
+  const [timeFormat, setTimeFormat] = useState("12h");
   const [hardware, setHardware] = useState(null);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -24,6 +25,7 @@ export default function Settings() {
       setIdleMode(s.idle_screen_mode || "black");
       setIdleScale(s.idle_logo_scale || "fit");
       setIdleLogoPath(s.idle_logo_path || "");
+      setTimeFormat(s.time_format || "12h");
     }).catch((e) => setError(e.message));
     api.listOutputs().then(setOutputs).catch((e) =>
       setError(`Could not list outputs (${e.message}). Is the playback service up?`),
@@ -49,6 +51,7 @@ export default function Settings() {
         audio_mode: audioMode,
         idle_screen_mode: logoFile ? "logo" : idleMode,
         idle_logo_scale: idleScale,
+        time_format: timeFormat,
       });
       setLogoFile(null);
       setMsg("Settings saved ✓");
@@ -189,6 +192,19 @@ export default function Settings() {
             {logoFile ? logoFile.name : idleLogoPath ? idleLogoPath : "No logo uploaded"}
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Display</h3>
+        <div className="muted">Top-bar clock format</div>
+        <select
+          value={timeFormat}
+          onChange={(e) => setTimeFormat(e.target.value)}
+          style={{ marginTop: 8 }}
+        >
+          <option value="12h">12-hour (AM/PM)</option>
+          <option value="24h">24-hour</option>
+        </select>
       </div>
 
       <div style={{ marginTop: 16 }}>

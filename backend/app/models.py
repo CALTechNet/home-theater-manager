@@ -124,5 +124,7 @@ class AppSettings(Base):
     idle_logo_path: Mapped[str | None] = mapped_column(String, nullable=True)
     # Logo scaling: "fit" preserves the whole image, "fill" crops to cover.
     idle_logo_scale: Mapped[str] = mapped_column(String, default="fit")
+    # Header clock display: "12h" (AM/PM) or "24h".
+    time_format: Mapped[str] = mapped_column(String, default="12h")
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
