@@ -126,5 +126,9 @@ class AppSettings(Base):
     idle_logo_scale: Mapped[str] = mapped_column(String, default="fit")
     # Header clock display: "12h" (AM/PM) or "24h".
     time_format: Mapped[str] = mapped_column(String, default="12h")
+    # HDR/SDR tone-mapping controls and output-mode policy. JSON is nullable
+    # so additive migrations can apply cleanly to older SQLite databases.
+    tone_mapping: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    video_mode: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

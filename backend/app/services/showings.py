@@ -11,7 +11,17 @@ def compute_runtime_min(items: list[ShowingItem]) -> int:
 def build_playlist_payload(showing: Showing) -> list[dict]:
     """Serialize a showing's ordered playlist for the playback control API."""
     return [
-        {"path": it.media.path, "role": it.role, "position": it.position}
+        {
+            "path": it.media.path,
+            "role": it.role,
+            "position": it.position,
+            "is_hdr10": it.media.is_hdr10,
+            "fps": it.media.fps,
+            "width": it.media.width,
+            "height": it.media.height,
+            "color_primaries": it.media.color_primaries,
+            "transfer_characteristics": it.media.transfer_characteristics,
+        }
         for it in sorted(showing.items, key=lambda i: i.position)
         if it.media
     ]

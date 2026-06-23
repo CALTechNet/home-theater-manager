@@ -33,3 +33,30 @@ def test_adds_missing_columns():
 
     # Idempotent: a second run applies nothing.
     assert run_migrations(eng) == []
+
+
+def test_adds_new_app_settings_json_columns():
+    tmp = tempfile.mkdtemp()
+    eng = create_engine(f"sqlite:///{tmp}/settings-stale.db")
+
+    with eng.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE app_settings ("
+            "id INTEGER PRIMARY KEY, "
+            "video_output_ids JSON, "
+            "audio_output_id VARCHAR, "
+            "audio_mode VARCHAR, "
+            "idle_screen_mode VARCHAR, "
+            "idle_logo_path VARCHAR, "
+            "idle_logo_scale VARCHAR, "
+            "time_format VARCHAR, "
+            "updated_at DATETIME)"
+        ))
+
+    applied = run_migrations(eng)
+
+    cols = {c["name"] for c in inspect(eng).get_columns("app_settings")}
+    assert "tone_mapping" in cols
+    assert "video_mode" in cols
+    assert "app_settings.tone_mapping" in applied
+    assert "app_settings.video_mode" in applied

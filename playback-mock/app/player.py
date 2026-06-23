@@ -497,7 +497,12 @@ class FfmpegPlayer:
             self._advance_locked()
             return self._snapshot_locked()
 
-    def build_media_command(self, path: str, outputs: dict | None = None) -> list[str]:
+    def build_media_command(
+        self,
+        path: str,
+        outputs: dict | None = None,
+        item: dict | None = None,
+    ) -> list[str]:
         outputs = outputs or self.outputs_config or {}
         # ffmpeg drives DeckLink/SDI + external audio; GPU/KMS outputs are mpv.
         # When a KMS output is present, mpv owns audio, so ffmpeg must not also
@@ -512,7 +517,7 @@ class FfmpegPlayer:
         )
         cmd = [self.ffmpeg_bin, "-hide_banner", "-nostdin", "-re", "-i", path]
         for device in video_devices:
-            cmd.extend(["-map", "0:v:0", *self._video_output_args(device)])
+            cmd.extend(["-map", "0:v:0", *self._video_output_args(device, outputs, item)])
             if audio_device and audio_device.embedded_audio and device.embedded_audio:
                 cmd.extend(["-map", "0:a:0?", *self._audio_codec_args(audio_mode)])
             else:
@@ -604,11 +609,16 @@ class FfmpegPlayer:
     def _is_null_sink(cmd: list[str]) -> bool:
         return cmd[-3:] == ["-f", "null", "-"]
 
-    def media_commands(self, path: str, outputs: dict | None = None) -> list[list[str]]:
+    def media_commands(
+        self,
+        path: str,
+        outputs: dict | None = None,
+        item: dict | None = None,
+    ) -> list[list[str]]:
         """All processes to launch for one media item: ffmpeg (SDI/audio) + mpv (KMS)."""
         outputs = outputs or self.outputs_config or {}
         cmds: list[list[str]] = []
-        ff = self.build_media_command(path, outputs)
+        ff = self.build_media_command(path, outputs, item)
         if not self._is_null_sink(ff):
             cmds.append(ff)
         cmds.extend(self.build_kms_media_commands(path, outputs))
@@ -633,7 +643,7 @@ class FfmpegPlayer:
                 self.position = 0.0
                 self._last_tick = time.monotonic()
                 self._play_procs = [
-                    self._popen(c) for c in self.media_commands(str(item.get("path", "")))
+                    self._popen(c) for c in self.media_commands(str(item.get("path", "")), item=item)
                 ]
             procs = list(self._play_procs)
             while procs and any(p.poll() is None for p in procs):
@@ -714,11 +724,64 @@ class FfmpegPlayer:
             return ["-c:a", "pcm_s16le"]
         return ["-c:a", "copy"]
 
-    @staticmethod
-    def _video_output_args(device: OutputDevice) -> list[str]:
+    def _video_output_args(
+        self,
+        device: OutputDevice,
+        outputs: dict | None = None,
+        item: dict | None = None,
+    ) -> list[str]:
+        args: list[str] = []
+        tone_map_filter = self._tone_mapping_filter(outputs, item)
+        if tone_map_filter:
+            args.extend(["-vf", tone_map_filter])
         if device.type == "sdi" or device.id.startswith("decklink:"):
-            return ["-pix_fmt", "uyvy422"]
-        return ["-pix_fmt", "bgra"]
+            return [*args, "-pix_fmt", "uyvy422"]
+        return [*args, "-pix_fmt", "bgra"]
+
+    @staticmethod
+    def _tone_mapping_filter(outputs: dict | None, item: dict | None) -> str | None:
+        tone_mapping = (outputs or {}).get("tone_mapping") or {}
+        if not isinstance(tone_mapping, dict):
+            return None
+        if not tone_mapping.get("enabled", False):
+            return None
+        if tone_mapping.get("mode") == "passthrough" or tone_mapping.get("target_container") == "hdr10":
+            return None
+        if not item or not item.get("is_hdr10"):
+            return None
+
+        target_nits = FfmpegPlayer._bounded_float(tone_mapping.get("target_nits"), 100.0, 20.0, 1000.0)
+        multiplier = FfmpegPlayer._bounded_float(tone_mapping.get("max_light_multiplier"), 6.0, 1.0, 12.0)
+        peak = max(target_nits, target_nits * multiplier)
+        desat = {
+            "off": 0.0,
+            "low": 1.0,
+            "medium": 2.0,
+            "high": 3.0,
+            "auto": 2.0,
+        }.get(str(tone_mapping.get("desaturation", "auto")), 2.0)
+        target = str(tone_mapping.get("target_container", "sdr2020"))
+        if target == "sdr709":
+            matrix = "bt709"
+            primaries = "bt709"
+        else:
+            matrix = "bt2020nc"
+            primaries = "bt2020"
+        return ",".join([
+            "zscale=t=linear:npl={:.0f}".format(target_nits),
+            "format=gbrpf32le",
+            "tonemap=tonemap=hable:desat={:.1f}:peak={:.0f}".format(desat, peak),
+            f"zscale=t=bt709:m={matrix}:p={primaries}:r=tv",
+            "format=yuv422p",
+        ])
+
+    @staticmethod
+    def _bounded_float(value: object, default: float, low: float, high: float) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = default
+        return min(max(number, low), high)
 
     @staticmethod
     def _idle_logo_filter(scale: str) -> str:

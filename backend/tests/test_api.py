@@ -185,6 +185,9 @@ def test_settings_defaults_and_update(client, monkeypatch):
     assert s["idle_screen_mode"] == "black"
     assert s["idle_logo_path"] is None
     assert s["idle_logo_scale"] == "fit"
+    assert s["tone_mapping"]["output_profile_id"] == "lumagen-auto"
+    assert s["tone_mapping"]["mode"] == "dynamic"
+    assert s["video_mode"]["match_policy"] == "frame_rate"
 
     r = client.put("/api/settings", json={
         "video_output_ids": ["decklink:0", "gpu:hdmi-0"],
@@ -192,6 +195,20 @@ def test_settings_defaults_and_update(client, monkeypatch):
         "audio_mode": "pcm",
         "idle_screen_mode": "black",
         "idle_logo_scale": "fill",
+        "tone_mapping": {
+            "enabled": True,
+            "mode": "static",
+            "output_profile_id": "epson-home-cinema",
+            "target_nits": 82,
+            "dynamic_pad": 5,
+            "desaturation": "high",
+        },
+        "video_mode": {
+            "match_policy": "both",
+            "base_output_profile_id": "barco-cinema-laser",
+            "frame_rate": "24",
+            "dynamic_range": "sdr",
+        },
     })
     assert r.status_code == 200
     body = r.json()
@@ -200,6 +217,15 @@ def test_settings_defaults_and_update(client, monkeypatch):
     assert body["audio_mode"] == "pcm"
     assert body["idle_screen_mode"] == "black"
     assert body["idle_logo_scale"] == "fill"
+    assert body["tone_mapping"]["mode"] == "static"
+    assert body["tone_mapping"]["output_profile_id"] == "epson-home-cinema"
+    assert body["tone_mapping"]["target_nits"] == 82
+    assert body["video_mode"]["match_policy"] == "both"
+    assert body["video_mode"]["base_output_profile_id"] == "barco-cinema-laser"
+    assert configured[-1]["tone_mapping"]["output_profile_id"] == "epson-home-cinema"
+    assert configured[-1]["output_profile"]["manufacturer"] == "Epson"
+    assert configured[-1]["video_mode"]["match_policy"] == "both"
+    assert configured[-1]["base_output_profile"]["manufacturer"] == "Barco"
     assert configured[-1]["idle_screen"] == {
         "mode": "black",
         "logo_path": None,
@@ -210,6 +236,17 @@ def test_settings_defaults_and_update(client, monkeypatch):
     assert client.put("/api/settings", json={"audio_mode": "bogus"}).status_code == 422
     assert client.put("/api/settings", json={"idle_screen_mode": "bogus"}).status_code == 422
     assert client.put("/api/settings", json={"idle_logo_scale": "bogus"}).status_code == 422
+
+
+def test_video_profile_catalog(client):
+    r = client.get("/api/settings/video-profiles")
+
+    assert r.status_code == 200
+    body = r.json()
+    names = {p["manufacturer"] for p in body["output_profiles"]}
+    assert {"Barco", "Christie", "Epson", "Panasonic"}.issubset(names)
+    assert body["tone_mapping_defaults"]["output_profile_id"] == "lumagen-auto"
+    assert body["video_mode_defaults"]["base_output_profile_id"] == "lumagen-auto"
 
 
 def test_time_format_setting(client, monkeypatch):

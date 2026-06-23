@@ -9,10 +9,17 @@ from PIL import Image, UnidentifiedImageError
 
 from ..config import get_settings as get_app_settings
 from ..database import get_db
-from ..schemas import IdleLogoOut, OutputsOut, SettingsOut, SettingsUpdate
+from ..schemas import IdleLogoOut, OutputsOut, SettingsOut, SettingsUpdate, VideoProfileCatalog
 from ..services import playback_client
 from ..services.playback_client import PlaybackUnavailable
 from ..services.settings_store import get_settings_row, output_payload
+from ..services.video_profiles import (
+    default_tone_mapping,
+    default_video_mode,
+    normalize_tone_mapping,
+    normalize_video_mode,
+    output_profiles,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 app_settings = get_app_settings()
@@ -46,6 +53,10 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
         if body.time_format not in ("12h", "24h"):
             raise HTTPException(422, "time_format must be '12h' or '24h'")
         row.time_format = body.time_format
+    if body.tone_mapping is not None:
+        row.tone_mapping = normalize_tone_mapping(body.tone_mapping)
+    if body.video_mode is not None:
+        row.video_mode = normalize_video_mode(body.video_mode)
     db.commit()
     db.refresh(row)
     try:
@@ -53,6 +64,15 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
     except PlaybackUnavailable:
         pass
     return row
+
+
+@router.get("/video-profiles", response_model=VideoProfileCatalog)
+def video_profiles():
+    return {
+        "output_profiles": output_profiles(),
+        "tone_mapping_defaults": default_tone_mapping(),
+        "video_mode_defaults": default_video_mode(),
+    }
 
 
 def _logo_dir() -> Path:

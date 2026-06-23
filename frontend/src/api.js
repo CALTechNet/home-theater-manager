@@ -69,6 +69,7 @@ export const api = {
   // settings
   getSettings: () => req("GET", "/settings"),
   updateSettings: (body) => req("PUT", "/settings", body),
+  videoProfiles: () => req("GET", "/settings/video-profiles"),
   uploadIdleLogo: (file) => upload("/settings/idle-logo", "file", file),
   listOutputs: () => req("GET", "/settings/outputs"),
   getHardware: () => req("GET", "/settings/hardware"),
