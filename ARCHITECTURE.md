@@ -19,10 +19,10 @@ change, update this doc in the same PR.
 | Mock playback service (control API stand-in) | **Implemented (Phase 1)** |
 | Additive schema migrations (run on startup) | **Implemented** |
 | PDF tickets (80mm receipt + 8.5×11 color) | **Implemented (Phase 1)** |
-| TUI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
+| CLI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
 | Hardware auto-discovery (NVIDIA/AMD/Intel + iGPU, DeckLink, printer, audio) | **Implemented** |
 | Blackmagic DeckLink driver installer (DKMS) | **Implemented** |
-| `htm` management TUI (re-discover, reconfigure, logs, update) | **Implemented** |
+| `htm` management CLI (re-discover, reconfigure, logs, update) | **Implemented** |
 | Real host playback service (multi-vendor decode + DeckLink) | Designed, not built (Phase 3) |
 | HDR10 SDI signaling | Designed (Phase 4) |
 
@@ -36,7 +36,7 @@ frontend/       React + Vite SPA (tabs/ + components/), Caddy (TLS :443 + /api)
 playback-mock/  FastAPI mock of the control API (§6) with a simulated clock
 deploy/         install.sh (curl|bash installer), discover.sh (hardware probe),
                 install-decklink.sh (Blackmagic DKMS driver),
-                htm-menu.sh (management TUI, installed as `htm`)
+                htm-menu.sh (management CLI, installed as `htm`)
 runtime/        hardware discovery output (gitignored), mounted at /runtime
 docker-compose.yml, .env.example
 ```
@@ -348,17 +348,18 @@ on the playback service. Manual shuttle controls can override at any time.
   Debian/RHEL/Alma families).
 - **`deploy/install.sh`** is a `curl … | sudo bash` installer that:
   1. detects the distro (apt vs dnf) from `/etc/os-release`,
-  2. installs Docker Engine + Compose plugin, `whiptail`/`newt`, `pciutils`, `usbutils`,
+  2. installs Docker Engine + Compose plugin, `pciutils`, `usbutils`,
   3. clones the repo to `/opt/home-theater-manager`,
   4. runs **`discover.sh`** to auto-detect hardware (GPUs incl. integrated,
      DeckLink, USB thermal printers, audio) → `runtime/hardware.json` + hints,
   5. installs the **`htm`** management command,
-  6. runs a **whiptail TUI wizard** (theater name, media path, seat grid, default
+  6. runs a **CLI wizard** (theater name, media path, seat grid, default
      ticket style) — reading from `/dev/tty` so it works through a curl pipe,
   7. writes `.env` and runs `docker compose up -d --build`.
-- Non-interactive mode (`--no-tui` + env vars) is supported for automation.
+- Non-interactive mode (`--non-interactive` + env vars) is supported for automation.
+  `--no-tui` is still accepted as a backwards-compatible alias.
 
-### 9.0.1 `htm` management TUI (`deploy/htm-menu.sh`)
+### 9.0.1 `htm` management CLI (`deploy/htm-menu.sh`)
 Re-runnable any time (`sudo htm`): **re-discover hardware** (after swapping a
 GPU/DeckLink/printer), set default ticket style, view status/logs, start/stop/
 restart, and update (git pull + rebuild). Discovery results feed the Settings
@@ -370,7 +371,7 @@ tab's "Detected hardware" panel via `/runtime/hardware.json`.
   `/dev/kfd`. The discovered `HTM_HWACCEL` hint selects the ffmpeg decode path.
 
 ### 9.0.3 DeckLink driver install (`deploy/install-decklink.sh`)
-The installer runs when discovery finds a DeckLink but no loaded driver (TUI
+The installer runs when discovery finds a DeckLink but no loaded driver (CLI
 prompts; also in `htm` and runnable standalone). It acquires the Desktop Video
 package by trying, in order:
 1. an explicit `HTM_DECKLINK_SRC` (local file, LAN URL, or signed `?verify=...` link),
@@ -426,7 +427,7 @@ running kernel.
   all four tabs functional against a **mock** playback service; ffprobe-based
   media scan; ticket ESC/POS rendering (print to file/mock). ✅ **Done**
   (also: New Showing wizard, APScheduler triggers, runtime rounding, and the
-  `deploy/install.sh` TUI installer landed alongside Phase 1.)
+  `deploy/install.sh` installer landed alongside Phase 1.)
 - **Phase 2 — Hardening:** Alembic migrations, auth (single shared login),
   per-item playlist reordering UI, richer schedule conflict checks.
 - **Phase 3 — Real playback service:** host systemd service, ffmpeg+NVDEC+DeckLink,

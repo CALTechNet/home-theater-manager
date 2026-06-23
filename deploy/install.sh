@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 #
-# Home Theater Manager — one-shot installer + TUI setup wizard.
+# Home Theater Manager — one-shot installer + CLI setup wizard.
 #
-# Usage (interactive TUI):
+# Usage (interactive CLI):
 #   curl -fsSL https://raw.githubusercontent.com/CALTechNet/home-theater-manager/main/deploy/install.sh | sudo bash
 #
 # Supports: Ubuntu Server (22.04/24.04) and Rocky Linux (9/10).
-# It installs Docker + Compose, clones the repo, walks you through a TUI to
+# It installs Docker + Compose, clones the repo, walks you through CLI prompts to
 # generate .env, then builds and starts the stack.
 #
-# Non-interactive: set env vars (see "Defaults" below) and add --no-tui:
-#   curl -fsSL .../install.sh | sudo HTM_MEDIA_HOST_PATH=/mnt/media bash -s -- --no-tui
+# Non-interactive: set env vars (see "Defaults" below) and add --non-interactive:
+#   curl -fsSL .../install.sh | sudo HTM_MEDIA_HOST_PATH=/mnt/media bash -s -- --non-interactive
 #
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Defaults (overridable by env or the TUI)
+# Defaults (overridable by env or the CLI)
 # ---------------------------------------------------------------------------
 REPO_URL="${HTM_REPO_URL:-https://github.com/CALTechNet/home-theater-manager.git}"
 REPO_REF="${HTM_REPO_REF:-main}"
@@ -31,9 +31,11 @@ HTM_TICKET_STYLE="${HTM_TICKET_STYLE:-receipt}"
 HTM_DECKLINK_VERSION="${HTM_DECKLINK_VERSION:-16.0}"
 export HTM_DECKLINK_VERSION
 
-USE_TUI=1
+INTERACTIVE=1
 for arg in "$@"; do
-  [ "$arg" = "--no-tui" ] && USE_TUI=0
+  case "$arg" in
+    --non-interactive|--no-tui) INTERACTIVE=0 ;;
+  esac
 done
 
 # ---------------------------------------------------------------------------
@@ -48,25 +50,6 @@ die()  { printf '%s xx %s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 # A TTY for interactive prompts even when the script is piped from curl.
 TTY="/dev/tty"
 have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
-ensure_term() {
-  if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] &&
-     TERM="$TERM" tput clear >/dev/null 2>&1 &&
-     TERM="$TERM" tput cup 0 0 >/dev/null 2>&1; then
-    return
-  fi
-
-  for term in xterm-256color xterm linux vt100; do
-    if TERM="$term" tput clear >/dev/null 2>&1 &&
-       TERM="$term" tput cup 0 0 >/dev/null 2>&1; then
-      export TERM="$term"
-      return
-    fi
-  done
-
-  warn "Terminal '${TERM:-unset}' cannot draw the TUI; using defaults/env for configuration."
-  USE_TUI=0
-}
-
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     die "Please run as root (pipe to 'sudo bash')."
@@ -97,15 +80,13 @@ detect_os() {
 # Dependency installation
 # ---------------------------------------------------------------------------
 install_base() {
-  log "Installing base packages (git, curl, whiptail/newt, pciutils, usbutils)..."
+  log "Installing base packages (git, curl, pciutils, usbutils)..."
   if [ "$PKG" = "apt" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
-    apt-get install -y ca-certificates curl git whiptail pciutils usbutils
+    apt-get install -y ca-certificates curl git pciutils usbutils
   else
-    dnf install -y ca-certificates curl git newt pciutils usbutils
-    command -v whiptail >/dev/null 2>&1 || dnf install -y whiptail || true
-    command -v whiptail >/dev/null 2>&1 || warn "whiptail was not found after package install; installer will use non-interactive defaults."
+    dnf install -y ca-certificates curl git pciutils usbutils
   fi
 }
 
@@ -176,7 +157,7 @@ maybe_install_decklink() {
     ok "DeckLink driver already loaded; skipping driver install."
     return 0
   fi
-  if [ "$USE_TUI" -eq 0 ] || ! have_tty; then
+  if [ "$INTERACTIVE" -eq 0 ] || ! have_tty; then
     # Non-interactive: attempt install (script auto-tries the pinned CDN version
     # and skips cleanly if it needs a signed token / source).
     export HTM_DECKLINK_SRC="${HTM_DECKLINK_SRC:-}"
@@ -184,11 +165,12 @@ maybe_install_decklink() {
     return 0
   fi
 
-  wt --title "Blackmagic DeckLink" --yesno \
-    "A DeckLink card was detected but no driver is loaded.\n\nThe installer will try Blackmagic's CDN for Desktop Video v${HTM_DECKLINK_VERSION:-16.0}\nautomatically. If that needs a signed token, you can paste a download\nlink from blackmagicdesign.com/support instead.\n\nInstall the SDI driver now?" 16 72 || return 0
+  echo
+  echo "A DeckLink card was detected, but the Blackmagic driver is not loaded." > "$TTY"
+  echo "The installer can try Desktop Video v${HTM_DECKLINK_VERSION:-16.0}, or you can paste a signed download link/local path." > "$TTY"
+  cli_confirm "Install the SDI driver now?" "n" || return 0
 
-  HTM_DECKLINK_SRC="$(wt --title "DeckLink package source" --inputbox \
-    "Leave BLANK to auto-download Desktop Video v${HTM_DECKLINK_VERSION:-16.0} from Blackmagic's CDN.\n\nOr paste a signed download link (ends with '?verify=...') / local path\nif the automatic download is refused." 13 72 "${HTM_DECKLINK_SRC:-}")" || return 0
+  HTM_DECKLINK_SRC="$(cli_input "DeckLink package source (blank = auto-download)" "${HTM_DECKLINK_SRC:-}")"
 
   export HTM_DECKLINK_SRC
   bash "$INSTALL_DIR/deploy/install-decklink.sh" || warn "DeckLink install had issues; see output above."
@@ -203,72 +185,97 @@ install_htm_command() {
 }
 
 # ---------------------------------------------------------------------------
-# TUI wizard (whiptail). Falls back to plain prompts without a TTY.
+# CLI wizard. Falls back to env/defaults without a TTY.
 # ---------------------------------------------------------------------------
-wt() {
-  # Keep whiptail's UI attached to the real terminal while still capturing
-
-  # form/menu answers in command substitutions. Redirection order matters:
-  # whiptail/newt draws on stdout and emits answers on stderr.
-  whiptail --backtitle "Home Theater Manager Setup" --clear --fb "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+cli_input() {
+  local prompt="$1" default="${2:-}" answer
+  if [ -n "$default" ]; then
+    printf '%s [%s]: ' "$prompt" "$default" > "$TTY"
+  else
+    printf '%s: ' "$prompt" > "$TTY"
+  fi
+  IFS= read -r answer < "$TTY" || answer=""
+  printf '%s' "${answer:-$default}"
 }
 
-wt_info() {
-  # Non-blocking notices avoid requiring an OK/Enter action before the first
-  # real configuration field. This is important on first-install consoles where
-  # whiptail msgbox buttons can be focused but not activatable by Enter.
-  whiptail --backtitle "Home Theater Manager Setup" --title "$1" --infobox "$2" "$3" "$4" >"$TTY" 2>&1 <"$TTY" || true
-  sleep "${5:-1}"
+cli_confirm() {
+  local prompt="$1" default="${2:-y}" answer suffix
+  if [ "$default" = "y" ]; then
+    suffix="Y/n"
+  else
+    suffix="y/N"
+  fi
+  while true; do
+    printf '%s [%s]: ' "$prompt" "$suffix" > "$TTY"
+    IFS= read -r answer < "$TTY" || answer=""
+    answer="${answer:-$default}"
+    case "$answer" in
+      y|Y|yes|YES|Yes) return 0 ;;
+      n|N|no|NO|No) return 1 ;;
+      *) echo "Please answer yes or no." > "$TTY" ;;
+    esac
+  done
 }
 
-run_tui() {
-  if [ "$USE_TUI" -eq 0 ] || ! have_tty || ! command -v whiptail >/dev/null 2>&1; then
+cli_menu() {
+  local prompt="$1" default="$2" choice
+  while true; do
+    echo "$prompt" > "$TTY"
+    echo "  1) receipt  - Thermal receipt (80mm roll)" > "$TTY"
+    echo "  2) fullpage - Full-page color ticket (8.5x11)" > "$TTY"
+    choice="$(cli_input "Choose ticket style" "$default")"
+    case "$choice" in
+      1|receipt) printf '%s' "receipt"; return ;;
+      2|fullpage) printf '%s' "fullpage"; return ;;
+      *) echo "Please choose 1, 2, receipt, or fullpage." > "$TTY" ;;
+    esac
+  done
+}
+
+run_cli() {
+  if [ "$INTERACTIVE" -eq 0 ] || ! have_tty; then
     warn "Running non-interactively; using defaults/env for configuration."
     return
   fi
-  if ! command -v tput >/dev/null 2>&1; then
-    warn "tput not installed; using defaults/env for configuration."
-    USE_TUI=0
-    return
-  fi
-  ensure_term
-  if [ "$USE_TUI" -eq 0 ]; then
-    return
-  fi
 
-  wt_info "Welcome" \
-    "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nStarting setup..." 14 64 1
+  echo > "$TTY"
+  echo "Home Theater Manager setup" > "$TTY"
+  echo "This will configure the theater name, media location, seat grid, and ticket style." > "$TTY"
 
   local intro="This wizard configures your Home Theater Manager."
   if [ -r "$INSTALL_DIR/runtime/hardware.json" ]; then
-    intro="$intro\n\nDetected hardware:\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any time with: sudo htm"
+    echo > "$TTY"
+    echo "Detected hardware:" > "$TTY"
+    echo "  GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})" > "$TTY"
+    echo "  DeckLink : ${HTM_HAS_DECKLINK:-false}" > "$TTY"
+    echo "Full details saved to runtime/hardware.json. You can re-run discovery any time with: sudo htm" > "$TTY"
   fi
 
   local theater_initial=""
   [ "$HTM_THEATER_NAME_WAS_SET" -eq 1 ] && theater_initial="$HTM_THEATER_NAME"
-  HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
-    "$intro\n\nName printed on tickets and shown in the UI.\nLeave blank for: Home Cinema" 19 72 "$theater_initial")"
+  echo > "$TTY"
+  echo "$intro" > "$TTY"
+  HTM_THEATER_NAME="$(cli_input "Theater name printed on tickets" "$theater_initial")"
   HTM_THEATER_NAME="${HTM_THEATER_NAME:-Home Cinema}"
 
-  HTM_MEDIA_HOST_PATH="$(wt --title "Media location" --inputbox \
-    "Host path to your movies/trailers (your NFS/SMB mount).\nMounted read-only into the app." 11 64 "$HTM_MEDIA_HOST_PATH")"
+  HTM_MEDIA_HOST_PATH="$(cli_input "Media location on this host" "$HTM_MEDIA_HOST_PATH")"
 
-  HTM_SEAT_MAX_ROW="$(wt --title "Seat grid — rows" --inputbox \
-    "Last seat row letter (A..?). E.g. F gives rows A-F." 10 64 "$HTM_SEAT_MAX_ROW")"
+  HTM_SEAT_MAX_ROW="$(cli_input "Last seat row letter (A..Z)" "$HTM_SEAT_MAX_ROW")"
 
-  HTM_SEAT_MAX_NUMBER="$(wt --title "Seat grid — seats per row" --inputbox \
-    "Seats per row (1..N). E.g. 6 gives 1-6." 10 64 "$HTM_SEAT_MAX_NUMBER")"
+  HTM_SEAT_MAX_NUMBER="$(cli_input "Seats per row" "$HTM_SEAT_MAX_NUMBER")"
 
   # Tickets are generated as PDFs and printed from the operator's workstation to
   # any printer it can reach. Pick the default style (switchable per-print in UI).
-  HTM_TICKET_STYLE="$(wt --title "Default ticket style" --menu \
-    "Tickets are generated as PDFs you print from your workstation to any\nprinter (network, USB, thermal, or a normal color printer).\n\nDefault style (changeable per print in the UI):" 18 70 2 \
-    receipt  "Thermal receipt (80mm roll)" \
-    fullpage "Full-page color ticket (8.5x11)" )"
+  HTM_TICKET_STYLE="$(cli_menu "Default ticket style (changeable per print in the UI):" "$HTM_TICKET_STYLE")"
 
-  wt --title "Confirm" --yesno \
-    "Ready to deploy with:\n\n Theater : $HTM_THEATER_NAME\n Media   : $HTM_MEDIA_HOST_PATH\n Seats   : A-$HTM_SEAT_MAX_ROW x 1-$HTM_SEAT_MAX_NUMBER\n GPU     : ${HTM_GPU_VENDOR:-Unknown} / DeckLink ${HTM_HAS_DECKLINK:-false}\n Tickets : $HTM_TICKET_STYLE PDF (printed from your workstation)\n\nBuild and start now?" 18 66 \
-    || die "Aborted by user."
+  echo > "$TTY"
+  echo "Ready to deploy with:" > "$TTY"
+  echo "  Theater : $HTM_THEATER_NAME" > "$TTY"
+  echo "  Media   : $HTM_MEDIA_HOST_PATH" > "$TTY"
+  echo "  Seats   : A-$HTM_SEAT_MAX_ROW x 1-$HTM_SEAT_MAX_NUMBER" > "$TTY"
+  echo "  GPU     : ${HTM_GPU_VENDOR:-Unknown} / DeckLink ${HTM_HAS_DECKLINK:-false}" > "$TTY"
+  echo "  Tickets : $HTM_TICKET_STYLE PDF (printed from your workstation)" > "$TTY"
+  cli_confirm "Build and start now?" "y" || die "Aborted by user."
 }
 
 # ---------------------------------------------------------------------------
@@ -323,7 +330,7 @@ ${c_grn}Home Theater Manager is running.${c_off}
 
   Config: $INSTALL_DIR/.env   (re-run installer or edit, then 'docker compose up -d')
 
-  Manage: sudo htm   (TUI: re-discover hardware, console/video routing, logs, update)
+  Manage: sudo htm   (CLI: re-discover hardware, console/video routing, logs, update)
 
 Console: this is a server OS. If a GPU connector drives the projector, route the
 VGA text console to a different output (and optionally add a serial console):
@@ -347,7 +354,7 @@ main() {
   fetch_repo
   run_discovery
   install_htm_command
-  run_tui
+  run_cli
   maybe_install_decklink
   write_env
   deploy
