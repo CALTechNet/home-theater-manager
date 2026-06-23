@@ -181,6 +181,21 @@ def test_settings_defaults_and_update(client, monkeypatch):
     assert client.put("/api/settings", json={"idle_logo_scale": "bogus"}).status_code == 422
 
 
+def test_time_format_setting(client, monkeypatch):
+    from app.services import playback_client
+
+    monkeypatch.setattr(playback_client, "configure", lambda payload: None)
+
+    assert client.get("/api/settings").json()["time_format"] == "12h"  # default
+
+    r = client.put("/api/settings", json={"time_format": "24h"})
+    assert r.status_code == 200
+    assert r.json()["time_format"] == "24h"
+    assert client.get("/api/settings").json()["time_format"] == "24h"
+
+    assert client.put("/api/settings", json={"time_format": "bogus"}).status_code == 422
+
+
 def test_idle_logo_upload_requires_4k_image(client, tmp_path, monkeypatch):
     from app.routers import settings as settings_router
     from app.services import playback_client

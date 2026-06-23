@@ -153,6 +153,7 @@ class SettingsOut(BaseModel):
     idle_screen_mode: str
     idle_logo_path: str | None
     idle_logo_scale: str
+    time_format: str
 
 
 class SettingsUpdate(BaseModel):
@@ -161,6 +162,7 @@ class SettingsUpdate(BaseModel):
     audio_mode: str | None = None
     idle_screen_mode: str | None = None
     idle_logo_scale: str | None = None
+    time_format: str | None = None
 
 
 class IdleLogoOut(BaseModel):

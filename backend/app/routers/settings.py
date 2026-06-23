@@ -41,6 +41,10 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
         if body.idle_logo_scale not in ("fit", "fill"):
             raise HTTPException(422, "idle_logo_scale must be 'fit' or 'fill'")
         row.idle_logo_scale = body.idle_logo_scale
+    if body.time_format is not None:
+        if body.time_format not in ("12h", "24h"):
+            raise HTTPException(422, "time_format must be '12h' or '24h'")
+        row.time_format = body.time_format
     db.commit()
     db.refresh(row)
     try:
