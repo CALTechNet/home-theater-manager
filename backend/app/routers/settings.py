@@ -2,15 +2,16 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+from PIL import Image, UnidentifiedImageError
 
 from ..config import get_settings as get_app_settings
 from ..database import get_db
-from ..schemas import OutputsOut, SettingsOut, SettingsUpdate
+from ..schemas import IdleLogoOut, OutputsOut, SettingsOut, SettingsUpdate
 from ..services import playback_client
 from ..services.playback_client import PlaybackUnavailable
-from ..services.settings_store import get_settings_row
+from ..services.settings_store import get_settings_row, output_payload
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 app_settings = get_app_settings()
@@ -32,9 +33,71 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
         if body.audio_mode not in ("passthrough", "pcm"):
             raise HTTPException(422, "audio_mode must be 'passthrough' or 'pcm'")
         row.audio_mode = body.audio_mode
+    if body.idle_screen_mode is not None:
+        if body.idle_screen_mode not in ("black", "logo"):
+            raise HTTPException(422, "idle_screen_mode must be 'black' or 'logo'")
+        row.idle_screen_mode = body.idle_screen_mode
+    if body.idle_logo_scale is not None:
+        if body.idle_logo_scale not in ("fit", "fill"):
+            raise HTTPException(422, "idle_logo_scale must be 'fit' or 'fill'")
+        row.idle_logo_scale = body.idle_logo_scale
     db.commit()
     db.refresh(row)
+    try:
+        playback_client.configure(output_payload(db))
+    except PlaybackUnavailable:
+        pass
     return row
+
+
+def _logo_dir() -> Path:
+    path = Path(app_settings.runtime_dir) / "assets"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _image_size(path: Path) -> tuple[int, int]:
+    try:
+        with Image.open(path) as image:
+            return image.size
+    except (OSError, UnidentifiedImageError) as e:
+        raise HTTPException(422, "idle logo must be a valid image") from e
+
+
+@router.post("/idle-logo", response_model=IdleLogoOut)
+async def upload_idle_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    ext_by_type = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+    }
+    ext = ext_by_type.get(file.content_type or "")
+    if ext is None:
+        raise HTTPException(422, "idle logo must be PNG, JPEG, or WebP")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(422, "idle logo is empty")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(413, "idle logo must be 25 MB or smaller")
+
+    target = _logo_dir() / f"idle-logo{ext}"
+    target.write_bytes(data)
+    width, height = _image_size(target)
+    if (width, height) != (3840, 2160):
+        target.unlink(missing_ok=True)
+        raise HTTPException(422, "idle logo must be exactly 3840x2160")
+
+    row = get_settings_row(db)
+    row.idle_logo_path = str(target)
+    row.idle_screen_mode = "logo"
+    db.commit()
+    db.refresh(row)
+    try:
+        playback_client.configure(output_payload(db))
+    except PlaybackUnavailable:
+        pass
+    return {"idle_logo_path": row.idle_logo_path, "width": width, "height": height}
 
 
 def _reserved_connectors() -> list[str]:

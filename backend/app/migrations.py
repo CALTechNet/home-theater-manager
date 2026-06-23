@@ -41,6 +41,13 @@ def _default_literal(col) -> str:
     return "''"
 
 
+def _default_clause(col) -> str:
+    """SQLite only requires a default for new NOT NULL columns."""
+    if col.nullable and col.default is None:
+        return ""
+    return f" DEFAULT {_default_literal(col)}"
+
+
 def run_migrations(target_engine: Engine | None = None) -> list[str]:
     """Sync the live schema to the models. Returns a list of applied changes."""
     from . import models  # noqa: F401  (register models on Base)
@@ -63,7 +70,7 @@ def run_migrations(target_engine: Engine | None = None) -> list[str]:
                 continue
             ddl = (
                 f"ALTER TABLE {table.name} ADD COLUMN {col.name} "
-                f"{_type_sql(col, eng.dialect)} DEFAULT {_default_literal(col)}"
+                f"{_type_sql(col, eng.dialect)}{_default_clause(col)}"
             )
             with eng.begin() as conn:
                 conn.execute(text(ddl))

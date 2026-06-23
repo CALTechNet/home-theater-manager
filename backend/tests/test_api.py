@@ -5,13 +5,17 @@ network is required.
 """
 import os
 import tempfile
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
 # Configure an isolated DB before importing the app.
 _tmp = tempfile.mkdtemp()
 os.environ["HTM_DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["HTM_MEDIA_ROOT"] = _tmp
+os.environ["HTM_SEAT_MAX_ROW"] = "F"
+os.environ["HTM_SEAT_MAX_NUMBER"] = "6"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -108,24 +112,79 @@ def test_seat_grid(client):
     assert grid["numbers"] == [1, 2, 3, 4, 5, 6]
 
 
-def test_settings_defaults_and_update(client):
+def test_settings_defaults_and_update(client, monkeypatch):
+    from app.services import playback_client
+
+    configured = []
+    monkeypatch.setattr(playback_client, "configure", lambda payload: configured.append(payload))
+
     s = client.get("/api/settings").json()
     assert s["video_output_ids"] == []
     assert s["audio_mode"] == "passthrough"
+    assert s["idle_screen_mode"] == "black"
+    assert s["idle_logo_path"] is None
+    assert s["idle_logo_scale"] == "fit"
 
     r = client.put("/api/settings", json={
         "video_output_ids": ["decklink:0", "gpu:hdmi-0"],
         "audio_output_id": "sdi-embedded",
         "audio_mode": "pcm",
+        "idle_screen_mode": "black",
+        "idle_logo_scale": "fill",
     })
     assert r.status_code == 200
     body = r.json()
     assert body["video_output_ids"] == ["decklink:0", "gpu:hdmi-0"]
     assert body["audio_output_id"] == "sdi-embedded"
     assert body["audio_mode"] == "pcm"
+    assert body["idle_screen_mode"] == "black"
+    assert body["idle_logo_scale"] == "fill"
+    assert configured[-1]["idle_screen"] == {
+        "mode": "black",
+        "logo_path": None,
+        "scale": "fill",
+    }
 
     # rejects invalid audio mode
     assert client.put("/api/settings", json={"audio_mode": "bogus"}).status_code == 422
+    assert client.put("/api/settings", json={"idle_screen_mode": "bogus"}).status_code == 422
+    assert client.put("/api/settings", json={"idle_logo_scale": "bogus"}).status_code == 422
+
+
+def test_idle_logo_upload_requires_4k_image(client, tmp_path, monkeypatch):
+    from app.routers import settings as settings_router
+    from app.services import playback_client
+
+    configured = []
+    monkeypatch.setattr(settings_router, "_logo_dir", lambda: tmp_path)
+    monkeypatch.setattr(playback_client, "configure", lambda payload: configured.append(payload))
+
+    small = BytesIO()
+    Image.new("RGB", (1920, 1080), "black").save(small, format="PNG")
+    small.seek(0)
+    r = client.post(
+        "/api/settings/idle-logo",
+        files={"file": ("small.png", small, "image/png")},
+    )
+    assert r.status_code == 422
+
+    logo = BytesIO()
+    Image.new("RGB", (3840, 2160), "black").save(logo, format="PNG")
+    logo.seek(0)
+    r = client.post(
+        "/api/settings/idle-logo",
+        files={"file": ("logo.png", logo, "image/png")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["width"] == 3840
+    assert body["height"] == 2160
+    assert body["idle_logo_path"] == str(tmp_path / "idle-logo.png")
+
+    s = client.get("/api/settings").json()
+    assert s["idle_screen_mode"] == "logo"
+    assert s["idle_logo_path"] == str(tmp_path / "idle-logo.png")
+    assert configured[-1]["idle_screen"]["mode"] == "logo"
 
 
 def test_audio_format_detection():

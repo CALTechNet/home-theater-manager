@@ -21,6 +21,10 @@ class LoadRequest(BaseModel):
     outputs: dict | None = None
 
 
+class ConfigureRequest(BaseModel):
+    outputs: dict
+
+
 # Simulated hardware outputs. The real Phase 3 service will enumerate these from
 # the DeckLink SDK and the GPU (DRM/NVML).
 VIDEO_OUTPUTS = [
@@ -47,6 +51,7 @@ class _State:
         self.showing_id: int | None = None
         self.items: list[dict] = []
         self.outputs: dict | None = None
+        self.idle_screen: dict = {"mode": "black", "logo_path": None, "scale": "fit"}
         self.index = 0
         self.position = 0.0          # seconds into current item
         self._last_tick = time.monotonic()
@@ -70,6 +75,7 @@ class _State:
                 "position_seconds": round(self.position, 1),
                 "current_item": current,
                 "outputs": self.outputs,
+                "idle_screen": self.idle_screen,
             }
 
 
@@ -83,7 +89,20 @@ def load(req: LoadRequest):
         _st.showing_id = req.showing_id
         _st.items = req.items
         _st.outputs = req.outputs
+        if req.outputs and req.outputs.get("idle_screen"):
+            _st.idle_screen = req.outputs["idle_screen"]
         _st.state = "LOADED"
+    return _st.snapshot()
+
+
+@app.post("/playback/configure")
+def configure(req: ConfigureRequest):
+    with _st.lock:
+        _st.outputs = req.outputs
+        _st.idle_screen = req.outputs.get(
+            "idle_screen",
+            {"mode": "black", "logo_path": None, "scale": "fit"},
+        )
     return _st.snapshot()
 
 
@@ -118,7 +137,11 @@ def resume():
 def stop():
     prior = _st.showing_id
     with _st.lock:
+        outputs = _st.outputs
+        idle_screen = _st.idle_screen
         _st.reset()
+        _st.outputs = outputs
+        _st.idle_screen = idle_screen
     snap = _st.snapshot()
     snap["showing_id"] = prior  # report which showing was ended
     return snap

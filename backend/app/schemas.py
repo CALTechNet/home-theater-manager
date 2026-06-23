@@ -150,9 +150,20 @@ class SettingsOut(BaseModel):
     video_output_ids: list[str]
     audio_output_id: str | None
     audio_mode: str
+    idle_screen_mode: str
+    idle_logo_path: str | None
+    idle_logo_scale: str
 
 
 class SettingsUpdate(BaseModel):
     video_output_ids: list[str] | None = None
     audio_output_id: str | None = None
     audio_mode: str | None = None
+    idle_screen_mode: str | None = None
+    idle_logo_scale: str | None = None
+
+
+class IdleLogoOut(BaseModel):
+    idle_logo_path: str
+    width: int
+    height: int
