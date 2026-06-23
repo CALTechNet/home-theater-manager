@@ -4,6 +4,7 @@ import Media from "./tabs/Media.jsx";
 import NowShowing from "./tabs/NowShowing.jsx";
 import Ticketing from "./tabs/Ticketing.jsx";
 import Settings from "./tabs/Settings.jsx";
+import HeaderClock from "./components/HeaderClock.jsx";
 
 const TABS = [
   ["schedule", "Schedule"],
@@ -38,6 +39,9 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="topbar-right">
+          <HeaderClock />
+        </div>
       </header>
       <main>
         {tab === "schedule" && <Schedule onPrintTickets={goTicketing} />}
