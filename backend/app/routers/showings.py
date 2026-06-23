@@ -88,6 +88,10 @@ def update_showing(showing_id: int, body: ShowingUpdate, db: Session = Depends(g
         media_by_id = _media_map(db, body.items)
         replace_items(showing, [(s.media_id, s.role) for s in body.items], media_by_id)
 
+    # Moving a finished showing to a new time re-arms it so it starts again.
+    if body.scheduled_start is not None and body.status is None and showing.status == "done":
+        showing.status = "scheduled"
+
     showing.computed_runtime_min = compute_runtime_min(showing.items)
     db.commit()
     db.refresh(showing)
