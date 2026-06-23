@@ -79,6 +79,36 @@ def test_create_showing_computes_runtime(client):
     assert body["items"][-1]["role"] == "feature"
 
 
+def test_delete_media(client):
+    # A standalone media row can be removed.
+    mid = _make_media(client, "trailer", duration=120.0)
+    assert client.delete(f"/api/media/{mid}").status_code == 204
+    assert client.delete(f"/api/media/{mid}").status_code == 404  # gone
+
+
+def test_delete_media_blocked_when_in_showing(client):
+    feature = _make_media(client, "feature", duration=3600.0)
+    trailer = _make_media(client, "trailer", duration=120.0)
+    s = client.post("/api/showings", json={
+        "title": "In Use",
+        "scheduled_start": "2026-07-03T19:00:00",
+        "items": [
+            {"media_id": trailer, "role": "trailer"},
+            {"media_id": feature, "role": "feature"},
+        ],
+    })
+    assert s.status_code == 201, s.text
+
+    # Both the feature and a playlisted trailer are protected.
+    assert client.delete(f"/api/media/{feature}").status_code == 409
+    assert client.delete(f"/api/media/{trailer}").status_code == 409
+
+    # Once the showing is gone, the media can be removed.
+    client.delete(f"/api/showings/{s.json()['id']}")
+    assert client.delete(f"/api/media/{feature}").status_code == 204
+    assert client.delete(f"/api/media/{trailer}").status_code == 204
+
+
 def test_ticket_copy_index_and_pdf(client):
     feature = _make_media(client, "feature", duration=3600.0)
     s = client.post("/api/showings", json={

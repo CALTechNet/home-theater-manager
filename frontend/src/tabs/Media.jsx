@@ -31,6 +31,19 @@ export default function Media() {
     load();
   }
 
+  async function remove(m) {
+    if (!confirm(`Remove "${m.title}" from the database? The file on disk is not deleted.`)) return;
+    setError("");
+    setMsg("");
+    try {
+      await api.deleteMedia(m.id);
+      setMsg(`Removed "${m.title}"`);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <>
       <div className="spread" style={{ marginBottom: 16 }}>
@@ -82,6 +95,9 @@ export default function Media() {
                       onClick={() => setKind(m, m.kind === "feature" ? "trailer" : "feature")}
                     >
                       Tag as {m.kind === "feature" ? "trailer" : "feature"}
+                    </button>
+                    <button className="btn danger" onClick={() => remove(m)}>
+                      Remove
                     </button>
                   </div>
                 </td>
