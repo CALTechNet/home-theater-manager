@@ -54,7 +54,7 @@ wt() {
   # Keep the menu UI on /dev/tty while returning menu/form answers to callers.
   # See deploy/install.sh for details on why this redirection order is
   # important for Enter/OK handling when invoked from non-standard stdio.
-  whiptail --backtitle "Home Theater Manager" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+  whiptail --backtitle "Home Theater Manager" --clear --fb "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
 }
 dc() { ( cd "$INSTALL_DIR" && docker compose "$@" ); }
 pause() { wt --title "$1" --msgbox "$2" 20 72; }

@@ -21,6 +21,8 @@ REPO_URL="${HTM_REPO_URL:-https://github.com/CALTechNet/home-theater-manager.git
 REPO_REF="${HTM_REPO_REF:-main}"
 INSTALL_DIR="${HTM_INSTALL_DIR:-/opt/home-theater-manager}"
 
+HTM_THEATER_NAME_WAS_SET=0
+[ "${HTM_THEATER_NAME+x}" = "x" ] && HTM_THEATER_NAME_WAS_SET=1
 HTM_THEATER_NAME="${HTM_THEATER_NAME:-Home Cinema}"
 HTM_MEDIA_HOST_PATH="${HTM_MEDIA_HOST_PATH:-/mnt/media}"
 HTM_SEAT_MAX_ROW="${HTM_SEAT_MAX_ROW:-F}"
@@ -46,6 +48,24 @@ die()  { printf '%s xx %s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 # A TTY for interactive prompts even when the script is piped from curl.
 TTY="/dev/tty"
 have_tty() { [ -e "$TTY" ] && [ -r "$TTY" ] && [ -w "$TTY" ]; }
+ensure_term() {
+  if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] &&
+     TERM="$TERM" tput clear >/dev/null 2>&1 &&
+     TERM="$TERM" tput cup 0 0 >/dev/null 2>&1; then
+    return
+  fi
+
+  for term in xterm-256color xterm linux vt100; do
+    if TERM="$term" tput clear >/dev/null 2>&1 &&
+       TERM="$term" tput cup 0 0 >/dev/null 2>&1; then
+      export TERM="$term"
+      return
+    fi
+  done
+
+  warn "Terminal '${TERM:-unset}' cannot draw the TUI; using defaults/env for configuration."
+  USE_TUI=0
+}
 
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
@@ -190,7 +210,7 @@ wt() {
 
   # form/menu answers in command substitutions. Redirection order matters:
   # whiptail/newt draws on stdout and emits answers on stderr.
-  whiptail --backtitle "Home Theater Manager Setup" "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
+  whiptail --backtitle "Home Theater Manager Setup" --clear --fb "$@" 3>&1 1>"$TTY" 2>&3 <"$TTY"
 }
 
 wt_info() {
@@ -206,6 +226,15 @@ run_tui() {
     warn "Running non-interactively; using defaults/env for configuration."
     return
   fi
+  if ! command -v tput >/dev/null 2>&1; then
+    warn "tput not installed; using defaults/env for configuration."
+    USE_TUI=0
+    return
+  fi
+  ensure_term
+  if [ "$USE_TUI" -eq 0 ]; then
+    return
+  fi
 
   wt_info "Welcome" \
     "This wizard configures your Home Theater Manager.\n\nYou'll set the theater name, media location, and seat grid.\n\nStarting setup..." 14 64 1
@@ -215,8 +244,11 @@ run_tui() {
     intro="$intro\n\nDetected hardware:\n GPU      : ${HTM_GPU_VENDOR:-Unknown} (decode: ${HTM_HWACCEL:-none})\n DeckLink : ${HTM_HAS_DECKLINK:-false}\n\nFull details saved to hardware.json. You can re-run discovery any time with: sudo htm"
   fi
 
+  local theater_initial=""
+  [ "$HTM_THEATER_NAME_WAS_SET" -eq 1 ] && theater_initial="$HTM_THEATER_NAME"
   HTM_THEATER_NAME="$(wt --title "Theater name" --inputbox \
-    "$intro\n\nName printed on tickets and shown in the UI:" 18 72 "$HTM_THEATER_NAME")"
+    "$intro\n\nName printed on tickets and shown in the UI.\nLeave blank for: Home Cinema" 19 72 "$theater_initial")"
+  HTM_THEATER_NAME="${HTM_THEATER_NAME:-Home Cinema}"
 
   HTM_MEDIA_HOST_PATH="$(wt --title "Media location" --inputbox \
     "Host path to your movies/trailers (your NFS/SMB mount).\nMounted read-only into the app." 11 64 "$HTM_MEDIA_HOST_PATH")"
