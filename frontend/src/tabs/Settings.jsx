@@ -17,6 +17,8 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
+  const connectors = hardware?.connectors || [];
+
   useEffect(() => {
     api.getSettings().then((s) => {
       setVideoIds(s.video_output_ids || []);
@@ -35,6 +37,21 @@ export default function Settings() {
 
   const toggleVideo = (id) =>
     setVideoIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  const displayForOutput = (output) => {
+    if (output.drm_connector) {
+      return connectors.find((c) => c.name === output.drm_connector) || {
+        name: output.drm_connector,
+        status: output.status,
+        device: output.drm_device,
+      };
+    }
+    if (output.id?.startsWith("gpu:")) {
+      const name = output.id.split(":")[1];
+      return connectors.find((c) => c.name === name);
+    }
+    return null;
+  };
 
   async function save() {
     setError("");
@@ -79,6 +96,7 @@ export default function Settings() {
           {outputs.video.map((o) => {
             const checked = videoIds.includes(o.id);
             const warn = o.reserved && checked;
+            const display = displayForOutput(o);
             return (
               <label
                 key={o.id}
@@ -109,10 +127,29 @@ export default function Settings() {
                       ⚠ {o.reserved_reason}
                     </div>
                   )}
+                  {display && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      Display {display.name}
+                      {display.status ? ` · ${display.status}` : ""}
+                      {display.device ? ` · ${display.device}` : ""}
+                    </div>
+                  )}
                 </span>
               </label>
             );
           })}
+          {connectors.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div className="muted">Discovered displays</div>
+              <div className="stack" style={{ marginTop: 6 }}>
+                {connectors.map((c) => (
+                  <div key={`${c.card || ""}-${c.name}`} className="muted" style={{ fontSize: 12 }}>
+                    {c.name} · {c.status || "unknown"} · {c.device || c.card || "DRM"}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ flex: 1 }}>
@@ -226,6 +263,9 @@ export default function Settings() {
             </div>
             {(hardware.gpus || []).map((g, i) => (
               <div key={i} className="muted">GPU — {g.vendor} {g.model} ({g.kind}, decode {g.decode})</div>
+            ))}
+            {(hardware.connectors || []).map((c, i) => (
+              <div key={i} className="muted">Display — {c.name} ({c.status || "unknown"}, {c.device || c.card || "DRM"})</div>
             ))}
             {(hardware.decklink || []).map((d, i) => (
               <div key={i} className="muted">Capture — {d.model}</div>

@@ -175,6 +175,20 @@ def test_discovers_video_outputs_from_hardware_json(tmp_path, monkeypatch):
     assert by_id["gpu:HDMI-A-1"].drm_device == "/dev/dri/card1"
 
 
+def test_output_api_includes_drm_connector_metadata():
+    dev = OutputDevice(
+        id="gpu:DP-1", name="GPU DP-1", type="displayport",
+        drm_connector="DP-1", drm_device="/dev/dri/card1",
+    )
+    assert dev.api_dict() == {
+        "id": "gpu:DP-1",
+        "name": "GPU DP-1",
+        "type": "displayport",
+        "drm_connector": "DP-1",
+        "drm_device": "/dev/dri/card1",
+    }
+
+
 def test_discovery_includes_decklink_when_present(tmp_path, monkeypatch):
     hw = tmp_path / "hardware.json"
     hw.write_text(json.dumps({"connectors": [{"name": "DP-1", "status": "connected", "card": "card1"}]}))

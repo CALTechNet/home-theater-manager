@@ -24,6 +24,20 @@ function minutesIntoDay(d) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+function sameLocalDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function startOfDay(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 function hourLabel(h) {
   const ampm = h < 12 ? "AM" : "PM";
   const display = h % 12 === 0 ? 12 : h % 12;
@@ -38,23 +52,42 @@ function fmtTime(d) {
  * Pack a day's showings into lanes so overlapping showings sit side by side,
  * and flag the ones that actually collide (runtime overlaps another's start).
  */
-function layoutDay(dayShowings) {
-  const sorted = [...dayShowings].sort(
-    (a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start),
+function segmentsForDay(showings, day) {
+  const dayStart = startOfDay(day);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  return showings.flatMap((s) => {
+    const start = new Date(s.scheduled_start);
+    const end = new Date(start);
+    end.setMinutes(end.getMinutes() + (s.computed_runtime_min || 0));
+    if (start >= dayEnd || end <= dayStart) return [];
+    const segmentStart = start < dayStart ? dayStart : start;
+    const segmentEnd = end > dayEnd ? dayEnd : end;
+    return [{
+      s,
+      key: `${s.id}-${dayStart.toISOString()}`,
+      startMin: sameLocalDay(segmentStart, dayStart) ? minutesIntoDay(segmentStart) : 0,
+      endMin: sameLocalDay(segmentEnd, dayStart) ? minutesIntoDay(segmentEnd) : 24 * 60,
+      continuesFromPrev: start < dayStart,
+      continuesNext: end > dayEnd,
+    }];
+  });
+}
+
+function layoutDay(showings, day) {
+  const sorted = segmentsForDay(showings, day).sort(
+    (a, b) => a.startMin - b.startMin || new Date(a.s.scheduled_start) - new Date(b.s.scheduled_start),
   );
   const laneEnds = []; // last end-minute per lane
-  const blocks = sorted.map((s) => {
-    const start = new Date(s.scheduled_start);
-    const startMin = minutesIntoDay(start);
-    const endMin = startMin + (s.computed_runtime_min || 0);
-    let lane = laneEnds.findIndex((end) => end <= startMin);
+  const blocks = sorted.map((segment) => {
+    let lane = laneEnds.findIndex((end) => end <= segment.startMin);
     if (lane === -1) {
       lane = laneEnds.length;
-      laneEnds.push(endMin);
+      laneEnds.push(segment.endMin);
     } else {
-      laneEnds[lane] = endMin;
+      laneEnds[lane] = segment.endMin;
     }
-    return { s, startMin, endMin, lane };
+    return { ...segment, lane };
   });
 
   const overlapping = new Set();
@@ -93,10 +126,12 @@ export default function Schedule({ onPrintTickets }) {
   }, []);
 
   const load = useCallback(() => {
+    const start = new Date(weekStart);
+    start.setDate(start.getDate() - 1);
     const end = new Date(weekStart);
     end.setDate(end.getDate() + 7);
     api
-      .listShowings(isoLocal(weekStart), isoLocal(end))
+      .listShowings(isoLocal(start), isoLocal(end))
       .then(setShowings)
       .catch((e) => setError(e.message));
   }, [weekStart]);
@@ -104,19 +139,6 @@ export default function Schedule({ onPrintTickets }) {
   useEffect(() => {
     load();
   }, [load]);
-
-  const byDay = (i) => {
-    const day = new Date(weekStart);
-    day.setDate(day.getDate() + i);
-    return showings.filter((s) => {
-      const sd = new Date(s.scheduled_start);
-      return (
-        sd.getFullYear() === day.getFullYear() &&
-        sd.getMonth() === day.getMonth() &&
-        sd.getDate() === day.getDate()
-      );
-    });
-  };
 
   const shiftWeek = (delta) => {
     const d = new Date(weekStart);
@@ -128,9 +150,14 @@ export default function Schedule({ onPrintTickets }) {
   const days = DAYS.map((label, i) => {
     const date = new Date(weekStart);
     date.setDate(date.getDate() + i);
-    return { label, date, ...layoutDay(byDay(i)) };
+    return { label, date, ...layoutDay(showings, date) };
   });
-  const totalShowtimes = showings.length;
+  const totalShowtimes = showings.filter((s) => {
+    const sd = new Date(s.scheduled_start);
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 7);
+    return sd >= weekStart && sd < end;
+  }).length;
   const totalOverlaps = days.reduce((n, d) => n + d.overlapping.size, 0);
 
   return (
@@ -190,15 +217,16 @@ export default function Schedule({ onPrintTickets }) {
               {HOURS.map((h) => (
                 <div className="cal-hour-line" key={h} style={{ top: h * HOUR_PX }} />
               ))}
-              {blocks.map(({ s, startMin, lane }) => {
+              {blocks.map(({ s, key, startMin, endMin, lane, continuesFromPrev, continuesNext }) => {
                 const top = (startMin / 60) * HOUR_PX;
-                const height = Math.max(((s.computed_runtime_min || 0) / 60) * HOUR_PX, 22);
+                const height = Math.max(((endMin - startMin) / 60) * HOUR_PX, 22);
                 const width = 100 / lanes;
                 const isOverlap = overlapping.has(s.id);
+                const startLabel = continuesFromPrev ? "Continued" : fmtTime(new Date(s.scheduled_start));
                 return (
                   <div
                     className={`cal-event${isOverlap ? " overlap" : ""}`}
-                    key={s.id}
+                    key={key}
                     onClick={() => setSelected(s)}
                     style={{
                       top,
@@ -206,11 +234,11 @@ export default function Schedule({ onPrintTickets }) {
                       left: `calc(${lane * width}% + 2px)`,
                       width: `calc(${width}% - 4px)`,
                     }}
-                    title={`${s.title || "(untitled)"} · ${fmtTime(new Date(s.scheduled_start))} · ${s.computed_runtime_min}m`}
+                    title={`${s.title || "(untitled)"} · ${startLabel} · ${s.computed_runtime_min}m`}
                   >
                     <div className="t">{s.title || "(untitled)"}</div>
                     <div className="cal-event-meta">
-                      {fmtTime(new Date(s.scheduled_start))} · {s.computed_runtime_min}m
+                      {startLabel} · {s.computed_runtime_min}m{continuesNext ? " →" : ""}
                     </div>
                   </div>
                 );

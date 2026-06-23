@@ -343,3 +343,30 @@ def test_console_reserved_annotation(monkeypatch):
     clean = s._annotate_reserved({"video": [{"id": "gpu:hdmi-0", "name": "HDMI",
                                              "type": "hdmi"}], "audio": []})
     assert clean["video"][0].get("reserved", False) is False
+
+
+def test_display_connector_annotation(monkeypatch):
+    """Playback output choices carry discovered DRM display details so the UI
+    can show the actual connector the operator is selecting."""
+    from app.routers import settings as s
+
+    monkeypatch.setattr(s, "_hardware_connectors", lambda: [
+        {"name": "DP-1", "status": "connected", "card": "card1", "device": "/dev/dri/card1"},
+        {"name": "HDMI-A-1", "status": "disconnected", "card": "card0"},
+    ])
+
+    out = s._annotate_display_connectors({
+        "video": [
+            {"id": "gpu:DP-1", "name": "GPU DP-1", "type": "displayport"},
+            {"id": "gpu:HDMI-A-1", "name": "GPU HDMI", "type": "hdmi", "drm_device": "/dev/dri/card9"},
+            {"id": "decklink:0", "name": "SDI", "type": "sdi"},
+        ],
+        "audio": [],
+    })
+    by_id = {d["id"]: d for d in out["video"]}
+    assert by_id["gpu:DP-1"]["drm_connector"] == "DP-1"
+    assert by_id["gpu:DP-1"]["drm_device"] == "/dev/dri/card1"
+    assert by_id["gpu:DP-1"]["status"] == "connected"
+    assert by_id["gpu:HDMI-A-1"]["drm_device"] == "/dev/dri/card9"
+    assert by_id["gpu:HDMI-A-1"]["status"] == "disconnected"
+    assert "drm_connector" not in by_id["decklink:0"]
