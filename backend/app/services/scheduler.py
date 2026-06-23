@@ -4,9 +4,13 @@ At a showing's start time, we load its playlist into the playback service and
 start it (ARCHITECTURE.md §6.4). Manual shuttle controls can override anytime.
 """
 import logging
+import os
+from datetime import tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from ..config import get_settings
 from ..database import SessionLocal
 from ..models import Showing
 from . import playback_client
@@ -21,6 +25,29 @@ JOB_PREFIX = "showing-"
 
 def _job_id(showing_id: int) -> str:
     return f"{JOB_PREFIX}{showing_id}"
+
+
+def _resolve_timezone() -> tzinfo:
+    """The timezone scheduled_start values are expressed in.
+
+    Showtimes are stored as naive local wall-clock times, so the scheduler must
+    localize them in the operator's zone — otherwise a containerized backend
+    (UTC by default) fires jobs at the wrong absolute time. Order: HTM_TIMEZONE,
+    then the TZ env var, then the system local timezone, then UTC.
+    """
+    name = (get_settings().timezone or os.getenv("TZ") or "").strip()
+    if name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            log.warning("Unknown timezone %r; falling back to system local time", name)
+    try:
+        from tzlocal import get_localzone
+
+        return get_localzone()
+    except Exception:  # noqa: BLE001 - last resort so the app still starts
+        log.warning("Could not determine local timezone; using UTC (showtimes may be off)")
+        return ZoneInfo("UTC")
 
 
 def _fire_showing(showing_id: int) -> None:
@@ -70,7 +97,9 @@ def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
         return
-    _scheduler = BackgroundScheduler()
+    tz = _resolve_timezone()
+    _scheduler = BackgroundScheduler(timezone=tz)
+    log.info("Scheduler timezone: %s", tz)
     _scheduler.start()
 
     db = SessionLocal()

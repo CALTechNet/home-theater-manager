@@ -4,6 +4,9 @@ SQLAlchemy==2.0.36
 pydantic==2.10.4
 pydantic-settings==2.7.0
 APScheduler==3.11.0
+# IANA timezone database for zoneinfo (python:3.12-slim ships without it), so the
+# scheduler can resolve HTM_TIMEZONE/TZ names like "America/Chicago".
+tzdata==2025.2
 httpx==0.28.1
 reportlab==4.2.5
 python-multipart==0.0.20
