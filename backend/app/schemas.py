@@ -165,6 +165,8 @@ class SettingsOut(BaseModel):
     idle_logo_path: str | None
     idle_logo_scale: str
     time_format: str
+    tone_mapping: dict
+    video_mode: dict
 
 
 class SettingsUpdate(BaseModel):
@@ -174,6 +176,14 @@ class SettingsUpdate(BaseModel):
     idle_screen_mode: str | None = None
     idle_logo_scale: str | None = None
     time_format: str | None = None
+    tone_mapping: dict | None = None
+    video_mode: dict | None = None
+
+
+class VideoProfileCatalog(BaseModel):
+    output_profiles: list[dict]
+    tone_mapping_defaults: dict
+    video_mode_defaults: dict
 
 
 class IdleLogoOut(BaseModel):

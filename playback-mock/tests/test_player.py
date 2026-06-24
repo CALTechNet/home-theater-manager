@@ -85,6 +85,30 @@ def test_media_command_routes_selected_video_and_external_audio_outputs():
     assert cmd[-8:] == ["-map", "0:a:0?", "-vn", "-c:a", "copy", "-f", "alsa", "hw:0,3"]
 
 
+def test_media_command_tone_maps_hdr_only():
+    player = FfmpegPlayer(catalog=_catalog(), ffmpeg_bin="ffmpeg")
+    outputs = {
+        "video_outputs": ["decklink:0"],
+        "audio_output": "sdi-embedded",
+        "audio_mode": "pcm",
+        "tone_mapping": {
+            "enabled": True,
+            "mode": "dynamic",
+            "target_container": "sdr2020",
+            "target_nits": 100,
+            "max_light_multiplier": 6,
+            "desaturation": "auto",
+        },
+    }
+
+    hdr = player.build_media_command("/mnt/media/hdr.mkv", outputs, item={"is_hdr10": True})
+    sdr = player.build_media_command("/mnt/media/sdr.mkv", outputs, item={"is_hdr10": False})
+
+    assert "-vf" in hdr
+    assert any("tonemap=tonemap=hable" in part for part in hdr)
+    assert "-vf" not in sdr
+
+
 def test_idle_command_uses_black_when_requested():
     player = FfmpegPlayer(catalog=_catalog(), ffmpeg_bin="ffmpeg")
     cmd = player.build_idle_command(

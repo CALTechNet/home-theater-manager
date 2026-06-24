@@ -25,6 +25,21 @@ PROC_TTY_SERIAL_FILE="${HTM_PROC_TTY_SERIAL_FILE:-/proc/tty/driver/serial}"
 say() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*"; }
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 trim() { sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
+json_lines_array() {
+  local file="$1"
+  local first=1
+  local line
+  printf '['
+  if [ -r "$file" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      if [ "$first" -eq 0 ]; then printf ','; fi
+      printf '"%s"' "$(json_escape "$line")"
+      first=0
+    done < "$file"
+  fi
+  printf ']'
+}
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -99,7 +114,21 @@ discover_outputs() {
     name="${base#*-}"                # DP-1  (connector name for video=/mpv)
     device="/dev/dri/${card}"        # KMS node mpv --drm-device targets
     status="$(cat "$d/status" 2>/dev/null || echo unknown)"
-    connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\",\"card\":\"$(json_escape "$card")\",\"device\":\"$(json_escape "$device")\"}")
+    local modes edid_present edid_bytes edid_sha1
+    modes="$(json_lines_array "$d/modes")"
+    edid_present="false"
+    edid_bytes=0
+    edid_sha1=""
+    if [ -r "$d/edid" ] && [ -s "$d/edid" ]; then
+      edid_present="true"
+      edid_bytes="$(wc -c < "$d/edid" | tr -d '[:space:]')"
+      if have sha1sum; then
+        edid_sha1="$(sha1sum "$d/edid" 2>/dev/null | awk '{print $1}')"
+      elif have shasum; then
+        edid_sha1="$(shasum -a 1 "$d/edid" 2>/dev/null | awk '{print $1}')"
+      fi
+    fi
+    connector_objs+=("{\"name\":\"$(json_escape "$name")\",\"status\":\"$(json_escape "$status")\",\"card\":\"$(json_escape "$card")\",\"device\":\"$(json_escape "$device")\",\"modes\":$modes,\"edid_present\":$edid_present,\"edid_bytes\":$edid_bytes,\"edid_sha1\":\"$(json_escape "$edid_sha1")\"}")
     say "  Connector: $name ($status) [$device]"
   done
   if [ ${#connector_objs[@]} -eq 0 ]; then
