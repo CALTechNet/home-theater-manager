@@ -6,7 +6,9 @@ network is required.
 import os
 import subprocess
 import tempfile
+from datetime import datetime
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -22,7 +24,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import init_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import MediaFile, ShowingItem  # noqa: E402
+from app.models import MediaFile, Showing, ShowingItem  # noqa: E402
 from app.services.showings import compute_runtime_min  # noqa: E402
 
 
@@ -354,6 +356,29 @@ def test_media_scan_finds_videos_in_nested_folders(client, tmp_path, monkeypatch
         }
     finally:
         db.close()
+
+
+def test_playlist_payload_remaps_media_roots(monkeypatch):
+    from app.services import showings
+
+    monkeypatch.setattr(showings, "get_settings", lambda: SimpleNamespace(
+        media_root="/mnt/media",
+        playback_media_root="/home/htm",
+        media_host_path="/home/htm",
+    ))
+
+    media = MediaFile(path="/mnt/media/Movies/Feature/Test.mkv", title="Test")
+    showing = Showing(
+        title="T",
+        scheduled_start=datetime(2026, 7, 1, 19, 0, 0),
+        items=[ShowingItem(position=0, role="feature", media=media)],
+    )
+
+    payload = showings.build_playlist_payload(showing)
+
+    assert payload[0]["path"] == "/home/htm/Movies/Feature/Test.mkv"
+    assert payload[0]["display_path"] == "/home/htm/Movies/Feature/Test.mkv"
+    assert payload[0]["source_path"] == "/mnt/media/Movies/Feature/Test.mkv"
 
 
 def test_console_reserved_annotation(monkeypatch):

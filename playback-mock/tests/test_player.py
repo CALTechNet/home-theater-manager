@@ -157,6 +157,20 @@ def test_simulated_player_keeps_idle_screen_after_stop():
     assert player.snapshot()["idle_screen"] == outputs["idle_screen"]
 
 
+def test_snapshot_splits_display_and_playback_paths():
+    player = SimulatedPlayer(catalog=_catalog())
+    player.load(10, [{
+        "path": "/mnt/media/Movie.mkv",
+        "display_path": "/home/htm/Movie.mkv",
+    }], None)
+    player.start()
+
+    snap = player.snapshot()
+
+    assert snap["current_item"] == "/home/htm/Movie.mkv"
+    assert snap["current_path"] == "/mnt/media/Movie.mkv"
+
+
 def _kms_catalog():
     return DeviceCatalog(
         video=[

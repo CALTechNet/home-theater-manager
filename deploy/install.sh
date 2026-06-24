@@ -337,6 +337,7 @@ HTM_TLS_DEFAULT_SNI=${default_sni}
 HTM_DATABASE_URL=sqlite:////data/htm.db
 HTM_MEDIA_HOST_PATH=${HTM_MEDIA_HOST_PATH}
 HTM_MEDIA_ROOT=/mnt/media
+HTM_PLAYBACK_MEDIA_ROOT=${HTM_PLAYBACK_MEDIA_ROOT:-$HTM_MEDIA_HOST_PATH}
 HTM_PLAYBACK_URL=http://playback:9000
 # mock = in-memory simulator (no real output); ffmpeg = real ffmpeg/mpv runner.
 HTM_PLAYBACK_DRIVER=${HTM_PLAYBACK_DRIVER:-mock}

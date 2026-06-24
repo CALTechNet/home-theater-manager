@@ -44,6 +44,8 @@ nav.tabs button.active { background: var(--panel-2); color: var(--ink); }
 
 /* Right-hand status cluster in the top bar (clock, now showing). */
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.topbar-status { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.topbar-now-showing { color: var(--muted); max-width: min(34vw, 420px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .topbar-clock { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: 0.5px; }
 
 main { padding: 20px; max-width: 1200px; margin: 0 auto; }
