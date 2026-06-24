@@ -84,10 +84,12 @@ The UI has five tabs:
    - **Full-page color** — 8.5×11 portrait "movie ticket"
 5. **Settings** — assign playback **video output(s)** (Blackmagic SDI, GPU
    HDMI/DisplayPort, or several at once to mirror) and the **audio output** +
-   mode (passthrough for Atmos/DTS:X bitstreaming, or decode to PCM). Upload a
-   **3840×2160 idle logo** or choose black screen so the playback service keeps
-   the selected video outputs blank/logoed between trailers and movies. Also
-   shows **detected hardware** from auto-discovery.
+   mode (passthrough for Atmos/DTS:X bitstreaming, or decode to PCM). Configure
+   **HDR to SDR tone mapping**, projector output profiles, source frame-rate /
+   dynamic-range matching, and EDID capability review. Upload a **3840×2160 idle
+   logo** or choose black screen so the playback service keeps the selected
+   video outputs blank/logoed between trailers and movies. Also shows
+   **detected hardware** from auto-discovery.
 
 **First run:** open **Media → Scan library**, tag a feature and some trailers,
 then create a showing from the **Schedule** tab.
@@ -123,6 +125,13 @@ Choose discovered video displays and audio outputs, set passthrough/PCM mode,
 and configure the idle screen used between shows.
 
 ![Settings view with discovered display and audio output choices](docs/screenshots/settings-outputs.png)
+
+### HDR tone mapping
+
+Tune Lumagen-style HDR to SDR mapping, pick projector profiles, match source
+frame rate or HDR/SDR range, and review EDID-reported display modes.
+
+![Settings view with HDR tone mapping, output mode matching, and EDID capabilities](docs/screenshots/settings-tone-mapping.png)
 
 ### Detected hardware
 
@@ -197,6 +206,11 @@ DeckLink card). The runner uses the Settings tab payload on every
 - `idle_screen` shows either a **black screen** or the uploaded **3840×2160 logo**
   on the selected outputs whenever no trailer/feature is playing; the show plays
   when started.
+- `tone_mapping`, `output_profile`, and `video_mode` carry the selected HDR to
+  SDR mapping profile, base output profile, and source matching policy to the
+  playback service. ffmpeg-driven outputs apply the tone-map filter only to
+  scanned HDR10 media; GPU/KMS outputs receive the same policy payload for the
+  renderer path.
 
 **GPU output requires** (1) the playback container to have the GPU DRM nodes —
 use the override `docker compose -f docker-compose.yml -f docker-compose.gpu.yml
