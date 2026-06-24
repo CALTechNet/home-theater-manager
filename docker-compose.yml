@@ -30,7 +30,7 @@ services:
       HTM_PROC_TTY_SERIAL_FILE: /host/proc/tty/driver/serial
     volumes:
       - htm-data:/data
-      - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
+      - ${HTM_MEDIA_HOST_PATH:-./media}:${HTM_MEDIA_ROOT:-/mnt/media}:ro
       # Hardware discovery results (deploy/discover.sh) shown in the Settings tab.
       # Backend writes this when Settings -> Re-discover is clicked.
       - ./runtime:/runtime
@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
     env_file: .env
     volumes:
-      - ${HTM_MEDIA_HOST_PATH:-./media}:/mnt/media:ro
+      - ${HTM_MEDIA_HOST_PATH:-./media}:${HTM_PLAYBACK_MEDIA_ROOT:-/mnt/media}:ro
       - ./runtime:/runtime:ro
     expose:
       - "9000"

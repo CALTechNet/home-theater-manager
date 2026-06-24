@@ -12,6 +12,12 @@ class Settings(BaseSettings):
 
     # Where remote media is mounted (read-only) inside the backend container.
     media_root: str = "/mnt/media"
+    # Host-side media path selected in setup, used for display labels.
+    media_host_path: str = ""
+    # Path the playback service should use for the same media tree. Defaults to
+    # media_root, but installer-created deployments set it to the chosen host
+    # media path and mount that path into playback too.
+    playback_media_root: str = ""
 
     # Playback control service (the host-side service; a mock in Phase 1).
     playback_url: str = "http://playback:9000"
