@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 
-// Tickets are generated server-side as PDFs (receipt or full-page color). The
-// browser opens the PDF so the operator can print to any printer they have.
+// Tickets are generated server-side as PDFs (receipt or full-page color) and
+// previewed in-page so printing does not open a separate PDF window.
 export default function Ticketing({ initialShowingId }) {
   const [showings, setShowings] = useState([]);
   const [grid, setGrid] = useState({ rows: [], numbers: [] });
@@ -15,6 +15,7 @@ export default function Ticketing({ initialShowingId }) {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const previewRef = useRef(null);
 
   useEffect(() => {
     api.listShowings().then(setShowings).catch((e) => setError(e.message));
@@ -26,19 +27,18 @@ export default function Ticketing({ initialShowingId }) {
     else setHistory([]);
   }, [showingId, msg]);
 
-  // Open the PDF in a new tab and trigger the browser's print dialog.
-  function openAndPrint(url) {
+  function preview(url) {
     setPdfUrl(url);
-    const win = window.open(url, "_blank");
-    if (win) {
-      win.addEventListener("load", () => {
-        try {
-          win.focus();
-          win.print();
-        } catch {
-          /* user can print manually */
-        }
-      });
+  }
+
+  function printPreview() {
+    const frame = previewRef.current;
+    if (!frame) return;
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } catch {
+      setError("The browser blocked direct printing. Use the PDF preview controls to print.");
     }
   }
 
@@ -55,15 +55,16 @@ export default function Ticketing({ initialShowingId }) {
         incl_candy: extras.candy,
       });
       const url = api.ticketPdfUrl(t.id, style);
-      setMsg(`Ticket #${t.id} created`);
-      openAndPrint(url);
+      setMsg(`Ticket #${t.id} created. QR code is ready to scan.`);
+      preview(url);
     } catch (e) {
       setError(e.message);
     }
   }
 
   function reprint(id) {
-    openAndPrint(api.ticketPdfUrl(id, style));
+    setMsg(`Ticket #${id} loaded for preview`);
+    preview(api.ticketPdfUrl(id, style));
   }
 
   return (
@@ -146,7 +147,7 @@ export default function Ticketing({ initialShowingId }) {
             </div>
 
             <button className="btn" disabled={!showingId} onClick={generate}>
-              🎟 Generate & Print
+              Generate Ticket
             </button>
           </div>
         </div>
@@ -155,6 +156,7 @@ export default function Ticketing({ initialShowingId }) {
           <div className="muted">PDF preview</div>
           {pdfUrl ? (
             <iframe
+              ref={previewRef}
               title="ticket"
               src={pdfUrl}
               style={{ width: "100%", height: 420, border: "1px solid var(--border)", borderRadius: 6, marginTop: 8, background: "#fff" }}
@@ -162,6 +164,9 @@ export default function Ticketing({ initialShowingId }) {
           ) : (
             <p className="muted">Generate a ticket to preview the PDF here.</p>
           )}
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn" disabled={!pdfUrl} onClick={printPreview}>Print Preview</button>
+          </div>
 
           <div className="muted" style={{ marginTop: 16 }}>
             Printed for this showing ({history.length})

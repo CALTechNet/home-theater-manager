@@ -107,6 +107,11 @@ class TicketCreate(BaseModel):
     incl_candy: bool = False
 
 
+class TicketValidate(BaseModel):
+    code: str
+    showing_id: int | None = None
+
+
 class TicketOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -119,6 +124,15 @@ class TicketOut(BaseModel):
     incl_candy: bool
     copy_index: int
     printed_at: datetime
+    validation_code: str | None
+    scanned_at: datetime | None
+
+
+class TicketValidationOut(BaseModel):
+    status: str
+    message: str
+    ticket: TicketOut | None = None
+    showing: ShowingOut | None = None
 
 
 # ---- Playback --------------------------------------------------------------

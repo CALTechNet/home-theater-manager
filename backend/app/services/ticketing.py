@@ -13,6 +13,9 @@ from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import mm
+from reportlab.graphics import renderPDF
+from reportlab.graphics.barcode import qr
+from reportlab.graphics.shapes import Drawing
 from reportlab.pdfgen import canvas
 
 from ..config import get_settings
@@ -45,7 +48,22 @@ def _ticket_data(showing: Showing, ticket: Ticket) -> dict:
         "extras": extras,
         "id": ticket.id,
         "copy": ticket.copy_index,
+        "validation_code": ticket.validation_code or "",
     }
+
+
+def _qr_payload(d: dict) -> str:
+    return f"HTM-TICKET:{d['validation_code']}"
+
+
+def _draw_qr(c, payload: str, x: float, y: float, size: float) -> None:
+    code = qr.QrCodeWidget(payload)
+    bounds = code.getBounds()
+    width = bounds[2] - bounds[0]
+    height = bounds[3] - bounds[1]
+    drawing = Drawing(size, size, transform=[size / width, 0, 0, size / height, 0, 0])
+    drawing.add(code)
+    renderPDF.draw(drawing, c, x, y)
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +84,13 @@ def _receipt_pdf(d: dict) -> bytes:
         ("left", 9, False, f"Extras: {', '.join(d['extras']) if d['extras'] else 'none'}"),
         ("rule", 0, False, ""),
         ("center", 8, False, f"Ticket #{d['id']} (copy {d['copy']})"),
+        ("center", 7, False, "Scan QR at entry"),
         ("center", 10, True, "Enjoy the show!"),
     ]
     margin = 5 * mm
     line_h = 6 * mm
-    height = margin * 2 + line_h * len(lines)
+    qr_size = 28 * mm
+    height = margin * 2 + line_h * len(lines) + qr_size + 4 * mm
 
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(width, height))
@@ -90,6 +110,9 @@ def _receipt_pdf(d: dict) -> bytes:
         else:
             c.drawString(margin, y - size, text)
         y -= line_h
+        if text.startswith("Scan QR"):
+            _draw_qr(c, _qr_payload(d), (width - qr_size) / 2, y - qr_size + 2 * mm, qr_size)
+            y -= qr_size + 4 * mm
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -170,6 +193,12 @@ def _fullpage_pdf(d: dict) -> bytes:
     c.drawString(card_x + 80 * mm, cy - 10 * mm, "GUEST")
     c.setFont("Helvetica-Bold", 20)
     c.drawString(card_x + 80 * mm, cy - 22 * mm, d["name"])
+
+    qr_size = 34 * mm
+    _draw_qr(c, _qr_payload(d), card_x + card_w - 52 * mm, cy - 35 * mm, qr_size)
+    c.setFillColor(colors.HexColor("#444"))
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(card_x + card_w - 35 * mm, cy - 39 * mm, "Scan at entry")
 
     # Extras chips.
     cy -= 40 * mm

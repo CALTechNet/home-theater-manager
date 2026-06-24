@@ -88,8 +88,32 @@ def test_create_showing_computes_runtime(client):
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["computed_runtime_min"] == 92
-    # Feature is forced to the end of the playlist.
+    # Playlist order is preserved for later showing edits.
     assert body["items"][-1]["role"] == "feature"
+
+
+def test_update_showing_preserves_playlist_reorder(client):
+    feature = _make_media(client, "feature", duration=5401.0)
+    trailer = _make_media(client, "trailer", duration=151.0)
+    s = client.post("/api/showings", json={
+        "title": "Reorder Film",
+        "scheduled_start": "2026-07-04T19:00:00",
+        "items": [
+            {"media_id": trailer, "role": "trailer"},
+            {"media_id": feature, "role": "feature"},
+        ],
+    }).json()
+
+    r = client.patch(f"/api/showings/{s['id']}", json={
+        "items": [
+            {"media_id": feature, "role": "feature"},
+            {"media_id": trailer, "role": "trailer"},
+        ],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [it["media_id"] for it in body["items"]] == [feature, trailer]
+    assert body["feature_id"] == feature
 
 
 def test_delete_media(client):
@@ -136,6 +160,8 @@ def test_ticket_copy_index_and_pdf(client):
     r2 = client.post("/api/tickets", json=payload)
     assert r1.status_code == 201
     assert r1.json()["copy_index"] == 1
+    assert r1.json()["validation_code"]
+    assert r1.json()["scanned_at"] is None
     assert r2.json()["copy_index"] == 2
 
     ticket_id = r1.json()["id"]
@@ -147,6 +173,39 @@ def test_ticket_copy_index_and_pdf(client):
         assert pdf.content[:4] == b"%PDF"
     # Invalid style is rejected.
     assert client.get(f"/api/tickets/{ticket_id}/pdf?style=bogus").status_code == 422
+
+
+def test_ticket_validation_tracks_showing_scan(client):
+    feature = _make_media(client, "feature", duration=3601.0)
+    s1 = client.post("/api/showings", json={
+        "title": "Scan Film",
+        "scheduled_start": "2026-07-05T20:00:00",
+        "feature_id": feature,
+    }).json()
+    s2 = client.post("/api/showings", json={
+        "title": "Other Film",
+        "scheduled_start": "2026-07-06T20:00:00",
+        "feature_id": feature,
+    }).json()
+    ticket = client.post("/api/tickets", json={"showing_id": s1["id"], "seat": "A1"}).json()
+    code = f"HTM-TICKET:{ticket['validation_code']}"
+
+    wrong = client.post("/api/tickets/validate", json={"code": code, "showing_id": s2["id"]})
+    assert wrong.status_code == 200
+    assert wrong.json()["status"] == "wrong_showing"
+
+    valid = client.post("/api/tickets/validate", json={"code": code, "showing_id": s1["id"]})
+    assert valid.status_code == 200
+    body = valid.json()
+    assert body["status"] == "valid"
+    assert body["ticket"]["scanned_at"] is not None
+    assert body["showing"]["id"] == s1["id"]
+
+    duplicate = client.post("/api/tickets/validate", json={"code": code, "showing_id": s1["id"]})
+    assert duplicate.json()["status"] == "already_scanned"
+
+    missing = client.post("/api/tickets/validate", json={"code": "HTM-TICKET:nope"})
+    assert missing.json()["status"] == "invalid"
 
 
 def test_playback_preview_proxy(client, monkeypatch):
