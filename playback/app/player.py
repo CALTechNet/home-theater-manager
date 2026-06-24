@@ -1,9 +1,7 @@
 """Playback engines for the control service.
 
-The service keeps the Phase 1 API stable while allowing deployments to switch
-from the in-memory simulator to a host-side ffmpeg runner with:
-
-    HTM_PLAYBACK_DRIVER=ffmpeg
+The default engine launches ffmpeg for DeckLink/SDI and audio paths, and mpv
+for GPU/KMS connectors:
 
 Output devices can be overridden with JSON environment variables when the
 installer discovers exact ffmpeg targets:
@@ -27,6 +25,7 @@ from typing import Protocol
 
 
 DEFAULT_IDLE = {"mode": "black", "logo_path": None, "scale": "fit"}
+BLACK_FRAME = Path(__file__).resolve().parent / "assets" / "black.ppm"
 
 
 @dataclass(frozen=True)
@@ -560,6 +559,7 @@ class FfmpegPlayer:
     def _mpv_base(self, device: OutputDevice) -> list[str]:
         cmd = [
             self.mpv_bin, "--no-config", "--really-quiet", "--fullscreen",
+            "--osc=no", "--osd-level=0", "--cursor-autohide=always",
             "--vo=drm", f"--drm-connector={device.drm_connector}",
         ]
         if device.drm_device:
@@ -605,8 +605,8 @@ class FfmpegPlayer:
                 cmds.append([*base, "--loop-file=inf", "--image-display-duration=inf",
                              f"--panscan={panscan}", "--", str(logo_path)])
             else:
-                # A black KMS screen: mpv idles holding a forced (black) window.
-                cmds.append([*base, "--idle=yes", "--force-window=yes", "--keep-open=yes"])
+                cmds.append([*base, "--loop-file=inf", "--image-display-duration=inf",
+                             "--", str(BLACK_FRAME)])
         return cmds
 
     @staticmethod
@@ -799,7 +799,7 @@ class FfmpegPlayer:
 
 
 def create_player() -> PlaybackEngine:
-    driver = os.getenv("HTM_PLAYBACK_DRIVER", "mock").lower()
-    if driver == "ffmpeg":
-        return FfmpegPlayer()
-    return SimulatedPlayer()
+    driver = os.getenv("HTM_PLAYBACK_DRIVER", "ffmpeg").lower()
+    if driver == "simulated":
+        return SimulatedPlayer()
+    return FfmpegPlayer()

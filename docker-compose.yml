@@ -1,8 +1,4 @@
-# Home Theater Manager — management plane.
-#
-# Phase 1 runs the web UI, API, DB, and the playback control service in mock
-# mode. Set HTM_PLAYBACK_DRIVER=ffmpeg for the ffmpeg runner, typically on the
-# host with direct access to DeckLink/GPU/audio devices.
+# Home Theater Manager — management plane, playback service, and web UI.
 #
 # Configuration is driven by a .env file (see .env.example).
 
@@ -41,10 +37,10 @@ services:
     expose:
       - "8000"
 
-  # Playback control service. Defaults to mock mode; ffmpeg mode needs host
-  # hardware device access in real deployments.
+  # Playback control service. Use docker-compose.gpu.yml when driving GPU/KMS
+  # projector outputs from inside the container.
   playback:
-    build: ./playback-mock
+    build: ./playback
     image: htm-playback
     restart: unless-stopped
     env_file: .env

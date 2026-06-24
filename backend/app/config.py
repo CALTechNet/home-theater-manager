@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # media path and mount that path into playback too.
     playback_media_root: str = ""
 
-    # Playback control service (the host-side service; a mock in Phase 1).
+    # Playback control service.
     playback_url: str = "http://playback:9000"
     playback_timeout_s: float = 5.0
 

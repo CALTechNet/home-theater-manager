@@ -139,8 +139,8 @@ def _reserved_connectors() -> list[str]:
 
 def _connector_matches_output(connector: str, dev: dict) -> bool:
     """Best-effort match between a DRM connector name (e.g. HDMI-A-1) and a
-    playback output device. Output IDs are not yet 1:1 with DRM names (mock /
-    pre-Phase-3), so we match on the device 'type' family by connector prefix.
+    playback output device. Output IDs are not always 1:1 with DRM names, so we
+    match on the device 'type' family by connector prefix.
     Advisory only — drives a warning, never a hard block.
     """
     fam = connector.split("-", 1)[0].lower()  # HDMI-A-1 -> hdmi, DP-1 -> dp

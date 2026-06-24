@@ -16,7 +16,7 @@ change, update this doc in the same PR.
 | Management plane (web UI, API, DB, scheduler, ticketing) | **Implemented (Phase 1)** |
 | Settings tab: video/audio output routing | **Implemented (Phase 1)** |
 | Rich media probe (aspect, audio profile, size, bitrate) | **Implemented (Phase 1)** |
-| Playback service (control API + mock mode) | **Implemented (Phase 1)** |
+| Playback service (control API + ffmpeg/mpv runner) | **Implemented; hardware validation pending** |
 | Additive schema migrations (run on startup) | **Implemented** |
 | PDF tickets (80mm receipt + 8.5×11 color) | **Implemented (Phase 1)** |
 | CLI installer for Ubuntu / Rocky (`deploy/install.sh`) | **Implemented** |
@@ -34,8 +34,8 @@ backend/        FastAPI app: routers/ (media, showings, tickets, playback,
                 ticketing[PDF], playback_client, settings_store),
                 migrations.py, models.py, schemas.py, config.py, database.py
 frontend/       React + Vite SPA (tabs/ + components/), Caddy (TLS :443 + /api)
-playback-mock/  FastAPI playback service (§6): mock mode by default, ffmpeg via
-                HTM_PLAYBACK_DRIVER=ffmpeg
+playback/       FastAPI playback service (§6): ffmpeg for DeckLink/SDI + audio,
+                mpv `--vo=drm` for GPU/KMS connectors
 deploy/         install.sh (curl|bash installer), discover.sh (hardware probe),
                 install-decklink.sh (Blackmagic DKMS driver),
                 htm-menu.sh (management CLI, installed as `htm`)
@@ -73,8 +73,8 @@ docker-compose.yml, .env.example
 ## 2. System Overview
 
 The system is split into a **management plane** (containerized) and a
-**playback plane** (runs in mock mode for demos, or on the host with direct
-hardware access for ffmpeg mode). This split is
+**playback plane** (ffmpeg/mpv with direct device access for projector and audio
+outputs). This split is
 deliberate: the DeckLink kernel driver, GPU access, and frame-accurate realtime
 playback are brittle inside containers, while the web/API/DB are portable and
 benefit from Docker.
@@ -159,9 +159,8 @@ operator can confirm the right file before scheduling.
 
 ### 3.4 Playback service — Python control API + ffmpeg runner
 - Exposes the **control API** over a Unix socket (or localhost-only TCP).
-- Defaults to mock mode for demos/tests. With `HTM_PLAYBACK_DRIVER=ffmpeg`, owns
-  the DeckLink + GPU/audio devices and runs `ffmpeg` for active playback and the
-  idle screen.
+- Owns the DeckLink + GPU/audio devices and runs `ffmpeg`/`mpv` for active
+  playback and the idle screen.
 - Maintains a single playback state machine (§6.3) and reports it upstream.
 
 ### 3.5 Database — SQLite + additive migrations
@@ -268,8 +267,8 @@ GET  /outputs            -> { video: [{id,name,type}], audio: [{id,name,type}] }
 Output routing comes from `AppSettings` (the Settings tab) and is passed to the
 playback service on every `load`. Selecting multiple video outputs mirrors the
 feed (e.g. DeckLink SDI **and** a GPU HDMI output). The playback service
-enumerates available outputs via `GET /outputs` (DeckLink SDK + GPU in Phase 3;
-a fixed list in the mock).
+enumerates available outputs via `GET /outputs` from discovered DeckLink, DRM,
+and ALSA device data.
 
 The Settings tab also uploads a single operator-supplied idle logo still. The
 backend validates it as exactly **3840x2160** and stores it under `/runtime`.
@@ -303,11 +302,9 @@ only mutates GRUB with `--apply`; `sudo htm` exposes it interactively.
 On `--apply` it also writes the reserved connectors to `runtime/console.json`.
 `GET /api/settings/outputs` reads that file and annotates any playback video
 output whose connector matches (`reserved`, `reserved_reason`); the Settings tab
-badges it *console-reserved* and warns on selection. The match is by connector
-*family* (HDMI/DP/VGA) because pre-Phase-3 the mock output IDs are not yet 1:1
-with DRM connector names — hence **advisory (warn), not a hard block**. When the
-Phase 3 playback service enumerates GPU outputs via DRM, output IDs become the
-connector names and this collapses to an exact, enforceable match.
+badges it *console-reserved* and warns on selection. The match is advisory
+because some legacy output IDs still describe a connector family rather than an
+exact DRM connector.
 
 ### 6.2 Shuttle button mapping (Now Showing tab)
 - **Start Show** → `load` (if needed) + `start`
@@ -424,10 +421,10 @@ running kernel.
 - Backend reaches the host playback service via the Unix socket / `host.docker.internal`.
 
 ### 9.3 Playback service (host)
-- The same FastAPI service runs in mock mode by default. For host playback, set
-  `HTM_PLAYBACK_DRIVER=ffmpeg`, provide exact device targets when defaults are
-  not enough, and run it with access to `/dev/blackmagic*`, the GPU/audio
-  devices, `/mnt/media`, and `/runtime` for idle-logo assets.
+- The FastAPI playback service runs the ffmpeg/mpv engine by default. Provide
+  exact device targets when defaults are not enough, and run it with access to
+  `/dev/blackmagic*`, the GPU/audio devices, `/mnt/media`, and `/runtime` for
+  idle-logo assets.
 - Phase 3 packaging still needs a dedicated **systemd** unit with device
   permissions and restart-on-failure.
 
@@ -453,15 +450,11 @@ running kernel.
 
 - **Phase 0 — Design (this doc).** ✅
 - **Phase 1 — Management plane:** FastAPI + React + SQLite + Caddy in Compose;
-  all four tabs functional against a **mock** playback service; ffprobe-based
-  media scan; ticket ESC/POS rendering (print to file/mock). ✅ **Done**
+  all four tabs functional; ffprobe-based media scan; PDF ticket rendering. ✅ **Done**
   (also: New Showing wizard, APScheduler triggers, runtime rounding, and the
   `deploy/install.sh` installer landed alongside Phase 1.)
 - **Phase 2 — Hardening:** Alembic migrations, auth (single shared login),
   per-item playlist reordering UI, richer schedule conflict checks.
-- **Phase 3 — Real playback service:** ffmpeg runner is wired; finish host
+- **Phase 3 — Playback service:** ffmpeg/mpv runner is wired; finish host
   systemd packaging, device permissions, and on-hardware DeckLink/GPU validation.
 - **Phase 4 — HDR10 signaling + printer hardware + sync validation.**
-
-Each phase is independently demoable; the mock playback service in Phase 1 lets
-the entire UI be exercised before any hardware integration.
