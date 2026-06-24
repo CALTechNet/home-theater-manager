@@ -6,6 +6,7 @@ import { api } from "../api.js";
 export default function HeaderClock() {
   const [now, setNow] = useState(() => new Date());
   const [hour12, setHour12] = useState(true); // default AM/PM
+  const [showingText, setShowingText] = useState("Nothing Showing");
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -27,6 +28,30 @@ export default function HeaderClock() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadPlayback = async () => {
+      try {
+        const state = await api.playbackState();
+        const isActive = state.state === "playing" || state.state === "paused";
+        if (!isActive || !state.showing_id) {
+          if (active) setShowingText("Nothing Showing");
+          return;
+        }
+        const showing = await api.getShowing(state.showing_id);
+        if (active) setShowingText(`Now Showing: ${showing.title || `#${state.showing_id}`}`);
+      } catch {
+        if (active) setShowingText("Nothing Showing");
+      }
+    };
+    loadPlayback();
+    const t = setInterval(loadPlayback, 3000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, []);
+
   const time = now.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -35,8 +60,13 @@ export default function HeaderClock() {
   });
 
   return (
-    <div className="topbar-clock" title={now.toLocaleDateString()}>
-      {time}
+    <div className="topbar-status">
+      <div className="topbar-now-showing" title={showingText}>
+        {showingText}
+      </div>
+      <div className="topbar-clock" title={now.toLocaleDateString()}>
+        {time}
+      </div>
     </div>
   );
 }

@@ -315,14 +315,18 @@ class SimulatedPlayer:
             return self._snapshot_locked()
 
     def _snapshot_locked(self) -> dict:
-        current = None
+        current_item = None
+        current_path = None
         if self.items and self.index < len(self.items):
-            current = self.items[self.index].get("path")
+            item = self.items[self.index]
+            current_path = item.get("path")
+            current_item = item.get("display_path") or current_path
         return {
             "state": self.state.lower(),
             "showing_id": self.showing_id,
             "position_seconds": round(self.position, 1),
-            "current_item": current,
+            "current_item": current_item,
+            "current_path": current_path,
             "outputs": self.outputs_config,
             "idle_screen": self.idle_screen,
         }
@@ -681,14 +685,18 @@ class FfmpegPlayer:
         self._last_tick = now
 
     def _snapshot_locked(self) -> dict:
-        current = None
+        current_item = None
+        current_path = None
         if self.items and self.index < len(self.items):
-            current = self.items[self.index].get("path")
+            item = self.items[self.index]
+            current_path = item.get("path")
+            current_item = item.get("display_path") or current_path
         return {
             "state": self.state.lower(),
             "showing_id": self.showing_id,
             "position_seconds": round(self.position, 1),
-            "current_item": current,
+            "current_item": current_item,
+            "current_path": current_path,
             "outputs": self.outputs_config,
             "idle_screen": self.idle_screen,
         }

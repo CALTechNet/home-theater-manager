@@ -83,7 +83,7 @@ def preview():
     """A JPEG shot of what's currently on the output: the current frame while
     playing, else the idle logo when one is configured."""
     snap = player.snapshot()
-    path = snap.get("current_item")
+    path = snap.get("current_path") or snap.get("current_item")
     if snap.get("state") in ("playing", "paused") and path:
         frame = _grab_frame(path, snap.get("position_seconds", 0.0))
         if frame:

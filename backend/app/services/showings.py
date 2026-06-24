@@ -1,4 +1,7 @@
 """Showing helpers: playlist assembly and runtime computation."""
+from pathlib import Path
+
+from ..config import get_settings
 from ..models import MediaFile, Showing, ShowingItem
 
 
@@ -10,9 +13,20 @@ def compute_runtime_min(items: list[ShowingItem]) -> int:
 
 def build_playlist_payload(showing: Showing) -> list[dict]:
     """Serialize a showing's ordered playlist for the playback control API."""
+    settings = get_settings()
     return [
         {
-            "path": it.media.path,
+            "path": _remap_media_path(
+                it.media.path,
+                settings.media_root,
+                settings.playback_media_root or settings.media_root,
+            ),
+            "display_path": _remap_media_path(
+                it.media.path,
+                settings.media_root,
+                settings.media_host_path or settings.media_root,
+            ),
+            "source_path": it.media.path,
             "role": it.role,
             "position": it.position,
             "is_hdr10": it.media.is_hdr10,
@@ -25,6 +39,17 @@ def build_playlist_payload(showing: Showing) -> list[dict]:
         for it in sorted(showing.items, key=lambda i: i.position)
         if it.media
     ]
+
+
+def _remap_media_path(path: str, source_root: str, target_root: str) -> str:
+    """Map a scanned backend media path to another root, preserving its relative path."""
+    if not source_root or not target_root:
+        return path
+    try:
+        rel = Path(path).relative_to(Path(source_root))
+    except ValueError:
+        return path
+    return str(Path(target_root) / rel)
 
 
 def replace_items(showing: Showing, item_specs: list[tuple[int, str]], media_by_id: dict[int, MediaFile]) -> None:
