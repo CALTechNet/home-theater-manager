@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 #
 # Requirements for video to actually appear on the projector connector:
-#   * HTM_PLAYBACK_DRIVER=ffmpeg in .env (mock renders nothing).
+#   * HTM_PLAYBACK_DRIVER=ffmpeg in .env.
 #   * The projector's connector must be freed from the Linux text console, e.g.
 #       sudo bash deploy/console-routing.sh --video-output DP-1 --apply   # then reboot
 #     otherwise the kernel console keeps the connector and mpv can't modeset it.

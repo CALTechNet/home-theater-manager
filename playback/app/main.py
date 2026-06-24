@@ -1,8 +1,7 @@
 """Playback control service.
 
-By default this runs the Phase 1 in-memory simulator. Set
-`HTM_PLAYBACK_DRIVER=ffmpeg` on the host playback service to run real ffmpeg
-processes while preserving the same control API.
+By default this runs the ffmpeg/mpv playback engine while preserving the same
+control API for the management app.
 """
 import os
 import subprocess

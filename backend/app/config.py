@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Where remote media is mounted (read-only) inside the backend container.
     media_root: str = "/mnt/media"
 
-    # Playback control service (the host-side service; a mock in Phase 1).
+    # Playback control service.
     playback_url: str = "http://playback:9000"
     playback_timeout_s: float = 5.0
 

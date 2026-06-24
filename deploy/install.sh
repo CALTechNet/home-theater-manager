@@ -281,22 +281,19 @@ run_cli() {
 # ---------------------------------------------------------------------------
 # Playback driver selection
 # ---------------------------------------------------------------------------
-# Pick the real ffmpeg/mpv runner when the host has a usable GPU render node or
-# a DeckLink card; otherwise fall back to the mock simulator. Honor an explicit
-# HTM_PLAYBACK_DRIVER from the environment. USE_GPU_COMPOSE adds the GPU DRM
-# nodes (docker-compose.gpu.yml) so mpv --vo=drm can drive a GPU connector.
+# Use the ffmpeg/mpv runner by default. USE_GPU_COMPOSE adds the GPU DRM nodes
+# (docker-compose.gpu.yml) so mpv --vo=drm can drive a GPU connector when one is
+# available.
 USE_GPU_COMPOSE=0
 detect_playback() {
-  local default="mock"
+  HTM_PLAYBACK_DRIVER="${HTM_PLAYBACK_DRIVER:-ffmpeg}"
+  case "$HTM_PLAYBACK_DRIVER" in
+    ffmpeg|simulated) ;;
+    *) HTM_PLAYBACK_DRIVER="ffmpeg" ;;
+  esac
   if ls /dev/dri/renderD* >/dev/null 2>&1; then
-    default="ffmpeg"
     USE_GPU_COMPOSE=1
-  elif [ "${HTM_HAS_DECKLINK:-false}" = "true" ]; then
-    default="ffmpeg"
   fi
-  HTM_PLAYBACK_DRIVER="${HTM_PLAYBACK_DRIVER:-$default}"
-  # No point attaching GPU nodes if the operator forced the mock driver.
-  [ "$HTM_PLAYBACK_DRIVER" = "ffmpeg" ] || USE_GPU_COMPOSE=0
   export HTM_PLAYBACK_DRIVER
   log "Playback driver: $HTM_PLAYBACK_DRIVER (GPU DRM access: $([ "$USE_GPU_COMPOSE" -eq 1 ] && echo yes || echo no))"
 }
@@ -338,8 +335,7 @@ HTM_DATABASE_URL=sqlite:////data/htm.db
 HTM_MEDIA_HOST_PATH=${HTM_MEDIA_HOST_PATH}
 HTM_MEDIA_ROOT=/mnt/media
 HTM_PLAYBACK_URL=http://playback:9000
-# mock = in-memory simulator (no real output); ffmpeg = real ffmpeg/mpv runner.
-HTM_PLAYBACK_DRIVER=${HTM_PLAYBACK_DRIVER:-mock}
+HTM_PLAYBACK_DRIVER=${HTM_PLAYBACK_DRIVER:-ffmpeg}
 HTM_THEATER_NAME=${HTM_THEATER_NAME}
 HTM_SEAT_MAX_ROW=${HTM_SEAT_MAX_ROW}
 HTM_SEAT_MAX_NUMBER=${HTM_SEAT_MAX_NUMBER}
@@ -350,7 +346,7 @@ HTM_TICKET_STYLE=${HTM_TICKET_STYLE:-receipt}
 HTM_TIMEZONE=${host_tz}
 TZ=${host_tz}
 HTM_HARDWARE_FILE=/runtime/hardware.json
-# Hardware hints from auto-discovery (informational; consumed by Phase 3 playback)
+# Hardware hints from auto-discovery.
 HTM_GPU_VENDOR=${HTM_GPU_VENDOR:-Unknown}
 HTM_HWACCEL=${HTM_HWACCEL:-none}
 HTM_HAS_DECKLINK=${HTM_HAS_DECKLINK:-false}
@@ -418,12 +414,6 @@ the projector, free that connector from the Linux text console, then reboot:
   sudo bash $INSTALL_DIR/deploy/console-routing.sh --video-output <CONNECTOR> --apply
 Then select that output in Settings. The idle screen (black or logo) shows
 whenever no show is playing; the show plays when you start it.
-EOF
-  elif [ "${HTM_PLAYBACK_DRIVER}" = "mock" ]; then
-    cat <<EOF
-NOTE: running the MOCK playback engine — it simulates state but produces no real
-video. Set HTM_PLAYBACK_DRIVER=ffmpeg in $INSTALL_DIR/.env (GPU or DeckLink
-required) and re-run to enable real output.
 EOF
   fi
 }

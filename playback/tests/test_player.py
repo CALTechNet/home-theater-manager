@@ -374,7 +374,11 @@ def test_kms_idle_black_command():
     assert len(cmds) == 1
     cmd = cmds[0]
     assert cmd[0] == "mpv"
-    assert "--idle=yes" in cmd and "--force-window=yes" in cmd and "--no-audio" in cmd
+    assert "--no-audio" in cmd
+    assert "--osc=no" in cmd
+    assert "--osd-level=0" in cmd
+    assert "--loop-file=inf" in cmd
+    assert cmd[-2:] == ["--", str(player_mod.BLACK_FRAME)]
 
 
 def test_kms_idle_logo_command(tmp_path):
@@ -433,3 +437,13 @@ def test_env_catalog_overrides_devices(monkeypatch):
 
     assert catalog.outputs()["video"] == [{"id": "decklink:1", "name": "SDI 2", "type": "sdi"}]
     assert catalog.audio_by_id("avr").ffmpeg_args == ("-f", "alsa", "hw:1,7")
+
+
+def test_create_player_defaults_to_ffmpeg(monkeypatch):
+    monkeypatch.delenv("HTM_PLAYBACK_DRIVER", raising=False)
+
+    assert isinstance(player_mod.create_player(), FfmpegPlayer)
+
+    monkeypatch.setenv("HTM_PLAYBACK_DRIVER", "simulated")
+
+    assert isinstance(player_mod.create_player(), SimulatedPlayer)

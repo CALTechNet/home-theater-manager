@@ -1,4 +1,4 @@
-"""Thin HTTP client to the host-side playback control service (mock in Phase 1).
+"""Thin HTTP client to the playback control service.
 
 Implements the control API in ARCHITECTURE.md §6. The management plane never
 touches hardware directly; it only talks to this service.
