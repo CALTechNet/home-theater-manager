@@ -63,6 +63,7 @@ export const api = {
   listTickets: (showingId) =>
     req("GET", `/tickets${showingId ? `?showing_id=${showingId}` : ""}`),
   createTicket: (body) => req("POST", "/tickets", body),
+  validateTicket: (body) => req("POST", "/tickets/validate", body),
   // PDF is served directly (not JSON) — build the URL for the browser to open.
   ticketPdfUrl: (id, style) => `/api/tickets/${id}/pdf?style=${style}`,
 

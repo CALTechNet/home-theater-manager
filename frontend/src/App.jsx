@@ -3,6 +3,7 @@ import Schedule from "./tabs/Schedule.jsx";
 import Media from "./tabs/Media.jsx";
 import NowShowing from "./tabs/NowShowing.jsx";
 import Ticketing from "./tabs/Ticketing.jsx";
+import TicketScanner from "./tabs/TicketScanner.jsx";
 import Settings from "./tabs/Settings.jsx";
 import HeaderClock from "./components/HeaderClock.jsx";
 
@@ -11,6 +12,7 @@ const TABS = [
   ["media", "Media"],
   ["now", "Now Showing"],
   ["ticketing", "Ticketing"],
+  ["scanner", "Ticket Scan"],
   ["settings", "Settings"],
 ];
 
@@ -48,6 +50,7 @@ export default function App() {
         {tab === "media" && <Media />}
         {tab === "now" && <NowShowing />}
         {tab === "ticketing" && <Ticketing initialShowingId={ticketShowingId} />}
+        {tab === "scanner" && <TicketScanner />}
         {tab === "settings" && <Settings />}
       </main>
     </>

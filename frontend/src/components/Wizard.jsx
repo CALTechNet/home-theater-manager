@@ -165,12 +165,12 @@ export default function Wizard({ onClose, onCreated }) {
               <div className="muted">Playlist</div>
               {chosenTrailers.map((t) => (
                 <div key={t.id} className="row spread">
-                  <span>🎞 {t.title}</span>
+                  <span className="playlist-title">🎞 {t.title}</span>
                   <span className="muted">{fmtDur(t.duration_seconds)}</span>
                 </div>
               ))}
               <div className="row spread">
-                <span>🎬 {feature?.title}</span>
+                <span className="playlist-title">🎬 {feature?.title}</span>
                 <span className="muted">{fmtDur(feature?.duration_seconds || 0)}</span>
               </div>
               <hr style={{ borderColor: "var(--border)" }} />

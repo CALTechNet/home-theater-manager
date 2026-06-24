@@ -55,23 +55,22 @@ def _remap_media_path(path: str, source_root: str, target_root: str) -> str:
 def replace_items(showing: Showing, item_specs: list[tuple[int, str]], media_by_id: dict[int, MediaFile]) -> None:
     """Rebuild a showing's playlist from (media_id, role) specs, in order.
 
-    Trailers keep the given order; the feature is forced to the end so the
-    schedule/runtime reflects "trailers then feature".
+    The operator's order is preserved so existing showings can be edited and
+    reordered without the backend reshuffling the playlist.
     """
     showing.items.clear()
 
-    trailers = [(mid, role) for mid, role in item_specs if role != "feature"]
-    features = [(mid, role) for mid, role in item_specs if role == "feature"]
-    ordered = trailers + features
-
-    for position, (media_id, role) in enumerate(ordered):
+    feature_id = None
+    for position, (media_id, role) in enumerate(item_specs):
         media = media_by_id.get(media_id)
         if media is None:
             continue
+        if role == "feature" and feature_id is None:
+            feature_id = media_id
         showing.items.append(
             ShowingItem(media_id=media_id, position=position, role=role, media=media)
         )
 
     # Keep feature_id in sync with the feature item, if any.
-    if features:
-        showing.feature_id = features[0][0]
+    if feature_id is not None:
+        showing.feature_id = feature_id

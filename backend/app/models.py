@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models. Mirrors the data model in ARCHITECTURE.md §5."""
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -100,8 +101,14 @@ class Ticket(Base):
     incl_candy: Mapped[bool] = mapped_column(Boolean, default=False)
     copy_index: Mapped[int] = mapped_column(Integer, default=1)
     printed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    validation_code: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     showing: Mapped["Showing"] = relationship("Showing", back_populates="tickets")
+
+    @staticmethod
+    def new_validation_code() -> str:
+        return uuid4().hex
 
 
 class AppSettings(Base):

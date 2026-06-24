@@ -48,6 +48,10 @@ function fmtTime(d) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function fmtDur(seconds) {
+  return `${Math.round((seconds || 0) / 60)}m`;
+}
+
 /**
  * Pack a day's showings into lanes so overlapping showings sit side by side,
  * and flag the ones that actually collide (runtime overlaps another's start).
@@ -276,13 +280,51 @@ export default function Schedule({ onPrintTickets }) {
 function ShowingEditor({ showing, onClose, onChanged, onPrintTickets }) {
   const [start, setStart] = useState(showing.scheduled_start.slice(0, 16));
   const [title, setTitle] = useState(showing.title);
+  const [items, setItems] = useState(() => showing.items.map((it) => ({
+    media_id: it.media_id,
+    role: it.role,
+    media: it.media,
+  })));
+  const [media, setMedia] = useState([]);
+  const [addId, setAddId] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    Promise.all([api.listMedia("trailer"), api.listMedia("feature")])
+      .then(([trailers, features]) => setMedia([...trailers, ...features]))
+      .catch((e) => setError(e.message));
+  }, []);
+
+  const moveItem = (index, delta) => {
+    setItems((current) => {
+      const next = [...current];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const removeItem = (index) => {
+    setItems((current) => current.filter((_, i) => i !== index));
+  };
+
+  const addItem = () => {
+    const found = media.find((m) => String(m.id) === String(addId));
+    if (!found) return;
+    setItems((current) => [
+      ...current,
+      { media_id: found.id, role: found.kind === "feature" ? "feature" : "trailer", media: found },
+    ]);
+    setAddId("");
+  };
 
   async function save() {
     try {
       await api.updateShowing(showing.id, {
         title,
         scheduled_start: start + ":00",
+        items: items.map((it) => ({ media_id: it.media_id, role: it.role })),
       });
       onChanged();
     } catch (e) {
@@ -317,16 +359,53 @@ function ShowingEditor({ showing, onClose, onChanged, onPrintTickets }) {
             <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div className="muted">
-            Runtime: {showing.computed_runtime_min} min · Status: {showing.status}
+            Runtime: {items.reduce((n, it) => n + Math.round((it.media?.duration_seconds || 0) / 60), 0)} min · Status: {showing.status}
           </div>
-          <div className="card">
-            <div className="muted">Playlist</div>
-            {showing.items.map((it) => (
-              <div className="row spread" key={it.id}>
-                <span>{it.role === "feature" ? "🎬" : "🎞"} {it.media.title}</span>
-                <span className="muted">{Math.round(it.media.duration_seconds / 60)}m</span>
+          <div className="card playlist-editor">
+            <div className="spread" style={{ marginBottom: 10 }}>
+              <div className="muted">Playlist</div>
+              <div className="row playlist-add">
+                <select value={addId} onChange={(e) => setAddId(e.target.value)}>
+                  <option value="">Add media...</option>
+                  {media.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.kind} - {m.title}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn secondary" disabled={!addId} onClick={addItem}>Add</button>
+              </div>
+            </div>
+            {items.map((it, index) => (
+              <div className="playlist-row" key={`${it.media_id}-${index}`}>
+                <button className="btn secondary icon-btn" disabled={index === 0} onClick={() => moveItem(index, -1)} title="Move up">
+                  ↑
+                </button>
+                <button className="btn secondary icon-btn" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} title="Move down">
+                  ↓
+                </button>
+                <span className={`badge ${it.role}`}>{it.role}</span>
+                <span className="playlist-title" title={it.media?.path || it.media?.title}>
+                  {it.media?.title || "(missing media)"}
+                </span>
+                <span className="muted playlist-duration">{fmtDur(it.media?.duration_seconds)}</span>
+                <select
+                  value={it.role}
+                  onChange={(e) =>
+                    setItems((current) =>
+                      current.map((row, i) => (i === index ? { ...row, role: e.target.value } : row)),
+                    )
+                  }
+                >
+                  <option value="trailer">trailer</option>
+                  <option value="feature">feature</option>
+                </select>
+                <button className="btn danger icon-btn" onClick={() => removeItem(index)} title="Remove">
+                  ×
+                </button>
               </div>
             ))}
+            {items.length === 0 && <p className="muted">No playlist items.</p>}
           </div>
         </div>
         <div className="spread" style={{ marginTop: 18 }}>
